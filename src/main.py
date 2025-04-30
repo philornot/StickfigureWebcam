@@ -13,6 +13,7 @@ import numpy as np
 from src.camera.camera_capture import CameraCapture
 from src.camera.virtual_camera import VirtualCamera
 from src.drawing.stick_figure import StickFigureRenderer
+from src.lighting.adaptive_colors import AdaptiveLightingManager
 from src.pose.pose_detector import PoseDetector
 from src.pose.posture_analyzer import PostureAnalyzer
 from src.utils.custom_logger import CustomLogger
@@ -37,6 +38,8 @@ class StickFigureWebcam:
             log_file: Optional[str] = None,
             show_preview: bool = True,
             flip_camera: bool = True,
+            adaptive_lighting: bool = False,
+            adaptation_speed: float = 0.01,
             logger: Optional[CustomLogger] = None
     ):
         """
@@ -52,6 +55,8 @@ class StickFigureWebcam:
             log_file (Optional[str]): Ścieżka do pliku logów (None dla logowania tylko do konsoli)
             show_preview (bool): Czy pokazywać podgląd obrazu
             flip_camera (bool): Czy odbijać obraz z kamery w poziomie
+            adaptive_lighting (bool): Czy włączyć adaptacyjne dostosowywanie kolorów
+            adaptation_speed (float): Szybkość adaptacji kolorów (0.001-0.1)
             logger (Optional[CustomLogger]): Opcjonalny logger (zamiast tworzenia nowego)
         """
         # Konfiguracja
@@ -61,6 +66,7 @@ class StickFigureWebcam:
         self.debug = debug
         self.show_preview = show_preview
         self.flip_camera = flip_camera
+        self.adaptive_lighting = adaptive_lighting
 
         # Flagi stanu
         self.running = False
@@ -130,6 +136,7 @@ class StickFigureWebcam:
                 confidence_threshold=0.6,
                 smoothing_factor=0.7,
                 temporal_smoothing=5,
+                partial_visibility_bias=0.8,
                 logger=self.logger
             )
 
@@ -144,6 +151,18 @@ class StickFigureWebcam:
                 smoothing_history=3,
                 logger=self.logger
             )
+
+            # Inicjalizacja managera adaptacyjnego oświetlenia
+            if self.adaptive_lighting:
+                self.logger.info("Main", "Inicjalizacja managera adaptacyjnego oświetlenia", log_type="LIGHTING")
+                self.lighting_manager = AdaptiveLightingManager(
+                    adaptation_speed=adaptation_speed,
+                    smoothing_window=int(fps),  # 1 sekunda jako okno wygładzania
+                    sampling_interval=3,  # Analizuj co 3 klatkę dla oszczędności CPU
+                    logger=self.logger
+                )
+            else:
+                self.lighting_manager = None
 
             # Liczniki i statystyki
             self.frame_count = 0
@@ -192,6 +211,24 @@ class StickFigureWebcam:
                 # Odbicie obrazu w poziomie jeśli potrzeba
                 if self.flip_camera:
                     frame = self.camera.flip_horizontal(frame)
+
+                # Analizuj jasność otoczenia i aktualizuj kolory
+                if self.adaptive_lighting and not self.paused:
+                    brightness = self.lighting_manager.analyze_frame(frame)
+                    bg_color, figure_color = self.lighting_manager.update_colors(brightness)
+                    self.stick_figure_renderer.set_colors(
+                        bg_color=bg_color,
+                        figure_color=figure_color
+                    )
+
+                    # Logowanie stanu co 100 klatek
+                    if self.frame_count % 100 == 0:
+                        colors = self.lighting_manager.get_current_colors()
+                        self.logger.debug(
+                            "AdaptiveLighting",
+                            f"Jasność otoczenia: {brightness:.2f}, jasność tła: {colors['brightness_level']:.2f}",
+                            log_type="LIGHTING"
+                        )
 
                 # Aktualizacja licznika FPS
                 self.frame_count += 1
@@ -331,6 +368,19 @@ class StickFigureWebcam:
                 1
             )
 
+            # Wyświetlamy status adaptacyjnego oświetlenia
+            if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
+                adaptive_text = f"Adaptacyjne oświetlenie: {'ON' if self.adaptive_lighting else 'OFF'}"
+                cv2.putText(
+                    preview,
+                    adaptive_text,
+                    (10, self.height - 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    1
+                )
+
             # Wyświetlamy podgląd oryginalnego obrazu
             cv2.imshow("Podgląd kamery", preview)
 
@@ -388,6 +438,22 @@ class StickFigureWebcam:
             self.virtual_camera.send_test_pattern()
             self.logger.info("Main", "Wysłano wzór testowy (klawisz t)", log_type="VIRTUAL_CAM")
 
+        elif key == ord('l'):  # l - przełączenie adaptacyjnego oświetlenia
+            if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
+                self.adaptive_lighting = not self.adaptive_lighting
+                self.logger.info(
+                    "Main",
+                    f"Adaptacyjne oświetlenie {'włączone' if self.adaptive_lighting else 'wyłączone'} (klawisz l)",
+                    log_type="LIGHTING"
+                )
+
+                # Jeśli wyłączono adaptacyjne oświetlenie, przywróć domyślne kolory
+                if not self.adaptive_lighting:
+                    self.stick_figure_renderer.set_colors(
+                        bg_color=(255, 255, 255),  # Białe tło
+                        figure_color=(0, 0, 0)  # Czarny kontur
+                    )
+
     def _cleanup(self) -> None:
         """
         Zwalnia zasoby i zamyka połączenia przed zakończeniem aplikacji.
@@ -409,6 +475,10 @@ class StickFigureWebcam:
             # Zamykanie detektora pozy
             if hasattr(self, 'pose_detector'):
                 self.pose_detector.close()
+
+            # Resetowanie managera adaptacyjnego oświetlenia
+            if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
+                self.lighting_manager.reset()
 
             self.logger.info("Main", "Wszystkie zasoby zamknięte pomyślnie", log_type="CONFIG")
 
@@ -450,6 +520,10 @@ def parse_arguments():
                         help="Wyłącza automatyczne odbicie poziome obrazu")
     parser.add_argument("--skip-checks", action="store_true",
                         help="Pomija sprawdzanie wymagań systemowych")
+    parser.add_argument("--adaptive-lighting", action="store_true",
+                        help="Włącza adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia")
+    parser.add_argument("--adaptation-speed", type=float, default=0.01,
+                        help="Szybkość adaptacji kolorów (0.001-0.1, domyślnie 0.01)")
 
     return parser.parse_args()
 
@@ -527,6 +601,8 @@ def main():
             log_file=log_file,
             show_preview=not args.no_preview,
             flip_camera=not args.no_flip,
+            adaptive_lighting=args.adaptive_lighting,
+            adaptation_speed=args.adaptation_speed,
             logger=logger  # Przekazujemy już utworzony logger
         )
 
