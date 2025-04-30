@@ -67,6 +67,12 @@ Aplikacja w Pythonie, która za pomocą kamery internetowej rejestruje ruchy uż
 
 4. Dostosuj ustawienia w pliku `src/config/settings.py` według potrzeb.
 
+### Testy
+Aby uruchomić testy jednostkowe, uruchom
+```commandline
+python -m pytest
+```
+
 ## Funkcje
 
 - Detekcja pozy człowieka w czasie rzeczywistym
