@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# src/drawing/stick_figure.py
 
 from typing import List, Tuple, Optional
 
@@ -278,7 +279,7 @@ class StickFigureRenderer:
         self._draw_arms(canvas, landmarks)
 
         # 5. Rysowanie samych bioder (bez nóg lub z częściowo widocznymi udami)
-        self._draw_hips(canvas, landmarks)
+        self._draw_sitting_legs(canvas, landmarks)  # Zmieniona nazwa dla większej precyzji
 
         # 6. Dodanie opcjonalnych detali
         if confidence > 0.7:
@@ -624,13 +625,15 @@ class StickFigureRenderer:
                 self.line_thickness
             )
 
-    def _draw_hips(
+    def _draw_sitting_legs(
             self,
             canvas: np.ndarray,
             landmarks: List[Tuple[float, float, float, float]]
     ) -> None:
         """
-        Rysuje biodra stick figure (dla postawy siedzącej, bez lub z minimalnymi nogami).
+        Rysuje nogi stick figure w pozycji siedzącej.
+        W tej pozycji nogi albo nie są rysowane wcale, albo rysowane są tylko
+        górne części nóg, aby wyglądały jakby wychodziły z krzesła.
 
         Args:
             canvas (np.ndarray): Płótno do rysowania
@@ -638,44 +641,45 @@ class StickFigureRenderer:
         """
         h, w, _ = canvas.shape
 
-        # Rysowanie linii między biodrami - już powinno być narysowane w _draw_torso
-
-        # Ewentualnie rysowanie górnych części nóg (biodra -> kolana)
-        # z mniejszą widocznością, aby zaznaczyć że nogi są "pod krzesłem"
-        alpha = 0.5  # Współczynnik przezroczystości
-        leg_color = tuple([int((1 - alpha) * c + alpha * 255) for c in self.figure_color])
+        # W pozycji siedzącej zwykle rysujemy tylko do kolan lub w ogóle nie rysujemy nóg
+        # W tym przypadku dodajemy tylko opcjonalne górne części nóg
 
         if landmarks[self.LEFT_HIP][3] > 0.5 and landmarks[self.LEFT_KNEE][3] > 0.5:
+            # Konwertuj współrzędne na piksele
             left_hip_x = int(landmarks[self.LEFT_HIP][0] * w)
             left_hip_y = int(landmarks[self.LEFT_HIP][1] * h)
             left_knee_x = int(landmarks[self.LEFT_KNEE][0] * w)
 
-            # Ograniczamy długość nogi, aby wyglądała jakby była zgięta i "chowała się" pod krzesłem
-            knee_y_limit = left_hip_y + int((h - left_hip_y) * 0.3)
-            left_knee_y = min(int(landmarks[self.LEFT_KNEE][1] * h), knee_y_limit)
+            # Oblicz wirtualną pozycję kolana - wyprostowane przed siedziskiem
+            # ale nie za długie - zwykle maksymalnie 1/3 wysokości od bioder
+            max_leg_length = h / 6  # ograniczenie długości nogi
+            virtual_knee_y = left_hip_y + int(max_leg_length)
 
+            # Rysuj linię od biodra do wirtualnego kolana
             cv2.line(
                 canvas,
                 (left_hip_x, left_hip_y),
-                (left_knee_x, left_knee_y),
-                leg_color,
+                (left_knee_x, virtual_knee_y),
+                self.figure_color,
                 self.line_thickness
             )
 
         if landmarks[self.RIGHT_HIP][3] > 0.5 and landmarks[self.RIGHT_KNEE][3] > 0.5:
+            # Konwertuj współrzędne na piksele
             right_hip_x = int(landmarks[self.RIGHT_HIP][0] * w)
             right_hip_y = int(landmarks[self.RIGHT_HIP][1] * h)
             right_knee_x = int(landmarks[self.RIGHT_KNEE][0] * w)
 
-            # Ograniczamy długość nogi
-            knee_y_limit = right_hip_y + int((h - right_hip_y) * 0.3)
-            right_knee_y = min(int(landmarks[self.RIGHT_KNEE][1] * h), knee_y_limit)
+            # Oblicz wirtualną pozycję kolana - wyprostowane przed siedziskiem
+            max_leg_length = h / 6  # ograniczenie długości nogi
+            virtual_knee_y = right_hip_y + int(max_leg_length)
 
+            # Rysuj linię od biodra do wirtualnego kolana
             cv2.line(
                 canvas,
                 (right_hip_x, right_hip_y),
-                (right_knee_x, right_knee_y),
-                leg_color,
+                (right_knee_x, virtual_knee_y),
+                self.figure_color,
                 self.line_thickness
             )
 
@@ -705,20 +709,21 @@ class StickFigureRenderer:
             hip_center_y = (left_hip_y + right_hip_y) // 2
 
             # Szerokość krzesła - bazująca na szerokości bioder z marginesem
-            chair_width = int(abs(right_hip_x - left_hip_x) * 1.5)
-            chair_width = max(chair_width, 40)  # Minimalna szerokość
+            hip_width = abs(right_hip_x - left_hip_x)
+            chair_width = int(hip_width * 1.5)
+            chair_width = max(chair_width, 60)  # Minimalna szerokość
 
             # Parametry krzesła
-            seat_height = 10
-            leg_height = int(h * 0.2)  # 20% wysokości obrazu
+            seat_height = 20  # Zwiększona grubość siedziska
+            leg_height = int(h * 0.25)  # 25% wysokości obrazu
 
-            # Pozycja siedziska krzesła
+            # Pozycja siedziska krzesła - umieszczone centralnie pod biodrami
             seat_left = hip_center_x - chair_width // 2
             seat_right = hip_center_x + chair_width // 2
-            seat_top = hip_center_y
-            seat_bottom = hip_center_y + seat_height
+            seat_top = hip_center_y  # Ustawimy siedzisko dokładnie pod biodrami
+            seat_bottom = seat_top + seat_height
 
-            # Rysowanie siedziska
+            # Rysowanie siedziska jako wypełnionego prostokąta
             cv2.rectangle(
                 canvas,
                 (seat_left, seat_top),
@@ -727,8 +732,17 @@ class StickFigureRenderer:
                 -1  # Wypełnione
             )
 
+            # Krawędzie siedziska
+            cv2.rectangle(
+                canvas,
+                (seat_left, seat_top),
+                (seat_right, seat_bottom),
+                (int(self.chair_color[0] * 0.7), int(self.chair_color[1] * 0.7), int(self.chair_color[2] * 0.7)),
+                2  # Grubość krawędzi
+            )
+
             # Rysowanie nóg krzesła
-            leg_width = max(2, self.line_thickness)
+            leg_width = max(3, self.line_thickness)
             leg_margin = chair_width // 4
 
             # Lewa przednia noga
@@ -749,29 +763,44 @@ class StickFigureRenderer:
                 -1
             )
 
-            # Opcjonalnie: Oparcie krzesła
-            backrest_height = int(h * 0.15)  # 15% wysokości obrazu
-
+            # Lewa tylna noga
             cv2.rectangle(
                 canvas,
-                (seat_left, seat_top - backrest_height),
-                (seat_left + leg_width, seat_top),
+                (seat_left + leg_margin // 2, seat_bottom),
+                (seat_left + leg_margin // 2 + leg_width, seat_bottom + leg_height),
+                (int(self.chair_color[0] * 0.8), int(self.chair_color[1] * 0.8), int(self.chair_color[2] * 0.8)),
+                -1
+            )
+
+            # Prawa tylna noga
+            cv2.rectangle(
+                canvas,
+                (seat_right - leg_margin // 2 - leg_width, seat_bottom),
+                (seat_right - leg_margin // 2, seat_bottom + leg_height),
+                (int(self.chair_color[0] * 0.8), int(self.chair_color[1] * 0.8), int(self.chair_color[2] * 0.8)),
+                -1
+            )
+
+            # Oparcie krzesła
+            backrest_height = int(h * 0.2)  # 20% wysokości obrazu
+            backrest_width = chair_width // 10
+            backrest_left = hip_center_x - backrest_width // 2
+
+            # Narysuj oparcie jako pionowy prostokąt
+            cv2.rectangle(
+                canvas,
+                (backrest_left, seat_top - backrest_height),
+                (backrest_left + backrest_width, seat_top),
                 self.chair_color,
                 -1
             )
 
+            # Górna część oparcia jako poziomy prostokąt
+            top_width = chair_width // 2
             cv2.rectangle(
                 canvas,
-                (seat_right - leg_width, seat_top - backrest_height),
-                (seat_right, seat_top),
-                self.chair_color,
-                -1
-            )
-
-            cv2.rectangle(
-                canvas,
-                (seat_left, seat_top - leg_width),
-                (seat_right, seat_top),
+                (hip_center_x - top_width // 2, seat_top - backrest_height - 10),
+                (hip_center_x + top_width // 2, seat_top - backrest_height),
                 self.chair_color,
                 -1
             )
@@ -812,27 +841,22 @@ class StickFigureRenderer:
             # Przykładowy detal: kapelusz/czapka
             hat_color = (100, 100, 100)  # Szary
             hat_width = int(self.head_radius * 2.2)
-            hat_height = int(self.head_radius * 0.7)
-            hat_top_height = int(self.head_radius * 0.5)
+            hat_height = int(self.head_radius * 0.3)
 
-            hat_bottom_left = (head_pos[0] - hat_width // 2, head_pos[1] - hat_height)
-            hat_bottom_right = (head_pos[0] + hat_width // 2, head_pos[1] - hat_height)
-            hat_top_center = (head_pos[0], head_pos[1] - hat_height - hat_top_height)
-
-            # Rysowanie kapelusza
+            # Rysujemy kapelusz jako elipsę z wypełnieniem
             cv2.ellipse(
                 canvas,
-                (head_pos[0], head_pos[1] - hat_height // 2),
-                (hat_width // 2, hat_height // 2),
-                0, 180, 360, hat_color, -1
+                (head_pos[0], head_pos[1] - int(self.head_radius * 0.5)),
+                (hat_width // 2, hat_height),
+                0, 0, 180, hat_color, -1
             )
 
-            # Rondo kapelusza
+            # Dodajemy rondo kapelusza
             cv2.ellipse(
                 canvas,
-                (head_pos[0], head_pos[1] - hat_height // 2),
-                (hat_width // 2 + 5, 5),
-                0, 0, 360, hat_color, -1
+                (head_pos[0], head_pos[1] - int(self.head_radius * 0.5)),
+                (hat_width // 2 + 5, hat_height // 3),
+                0, 180, 360, hat_color, -1
             )
 
     def set_colors(

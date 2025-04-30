@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# src/main.py
 
 import argparse
+import logging
 import os
 import sys
 import time
@@ -115,8 +117,9 @@ class StickFigureWebcam:
                 width=width,
                 height=height,
                 fps=fps,
-                device_name="Stick Figure Webcam",
-                logger=self.logger
+                device_name=None,  # Automatyczne wykrywanie
+                logger=self.logger,
+                max_retries=3
             )
 
             # Inicjalizacja detektora pozy
@@ -192,8 +195,19 @@ class StickFigureWebcam:
         self.running = True
         self.logger.info("Main", "Uruchamianie głównej pętli aplikacji", log_type="CONFIG")
 
-        # Wysyłamy testowy wzór na początek
-        self.virtual_camera.send_test_pattern()
+        # Inicjalizacja wirtualnej kamery - ale nie zatrzymujemy się,
+        # jeśli nie uda się zainicjalizować
+        virtual_camera_working = self.virtual_camera.initialize()
+        if virtual_camera_working:
+            # Wysyłamy testowy wzór tylko jeśli kamera działa
+            self.virtual_camera.send_test_pattern()
+        else:
+            self.logger.warning(
+                "Main",
+                "Wirtualna kamera nie działa. Aplikacja będzie kontynuować, "
+                "ale obraz nie będzie dostępny jako źródło wideo.",
+                log_type="CONFIG"
+            )
 
         try:
             # Główna pętla aplikacji
@@ -241,7 +255,8 @@ class StickFigureWebcam:
 
                 if self.paused:
                     # W trybie pauzy pokazujemy ostatni obraz lub wzór testowy
-                    self.virtual_camera.send_test_pattern()
+                    if virtual_camera_working:
+                        self.virtual_camera.send_test_pattern()
                     if self.show_preview:
                         self._show_preview(frame, None, None)
                     continue
@@ -256,7 +271,18 @@ class StickFigureWebcam:
 
                     # Wysyłamy biały obraz (lub można użyć np. ostatniego poprawnego stick figure)
                     white_canvas = np.ones((self.height, self.width, 3), dtype=np.uint8) * 255
-                    self.virtual_camera.send_frame(white_canvas)
+
+                    if virtual_camera_working:
+                        # Próbujemy wysłać klatkę tylko jeśli kamera działa
+                        sent = self.virtual_camera.send_frame(white_canvas)
+                        if not sent:
+                            # Jeśli wysłanie się nie powiodło, aktualizujemy stan
+                            virtual_camera_working = False
+                            self.logger.warning(
+                                "Main",
+                                "Utracono połączenie z wirtualną kamerą",
+                                log_type="VIRTUAL_CAM"
+                            )
                     continue
 
                 # 3. Analiza postawy
@@ -274,7 +300,25 @@ class StickFigureWebcam:
                 )
 
                 # 5. Wysyłanie obrazu do wirtualnej kamery
-                self.virtual_camera.send_frame(stick_figure)
+                if virtual_camera_working:
+                    sent = self.virtual_camera.send_frame(stick_figure)
+                    if not sent:
+                        # Jeśli wysłanie się nie powiodło, aktualizujemy stan i próbujemy zresetować
+                        virtual_camera_working = False
+                        self.logger.warning(
+                            "Main",
+                            "Utracono połączenie z wirtualną kamerą. Próba resetu...",
+                            log_type="VIRTUAL_CAM"
+                        )
+                        # Próba resetu wirtualnej kamery
+                        if self.virtual_camera.reset():
+                            virtual_camera_working = self.virtual_camera.initialize()
+                            if virtual_camera_working:
+                                self.logger.info(
+                                    "Main",
+                                    "Przywrócono połączenie z wirtualną kamerą",
+                                    log_type="VIRTUAL_CAM"
+                                )
 
                 # 6. Wyświetlanie podglądu
                 if self.show_preview:
@@ -368,24 +412,68 @@ class StickFigureWebcam:
                 1
             )
 
+            # Status wirtualnej kamery
+            vcam_status = "Virtual Camera: "
+            if hasattr(self.virtual_camera, 'is_initialized') and self.virtual_camera.is_initialized:
+                vcam_status += "ACTIVE"
+                vcam_color = (0, 255, 0)  # Zielony
+            elif hasattr(self.virtual_camera, 'initialization_failed') and self.virtual_camera.initialization_failed:
+                vcam_status += "FAILED (press 'r' to reset)"
+                vcam_color = (0, 0, 255)  # Czerwony
+            else:
+                vcam_status += "INACTIVE (press 'r' to initialize)"
+                vcam_color = (0, 165, 255)  # Pomarańczowy
+
+            cv2.putText(
+                preview,
+                vcam_status,
+                (10, self.height - 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                vcam_color,
+                1
+            )
+
             # Wyświetlamy status adaptacyjnego oświetlenia
             if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
                 adaptive_text = f"Adaptacyjne oświetlenie: {'ON' if self.adaptive_lighting else 'OFF'}"
                 cv2.putText(
                     preview,
                     adaptive_text,
-                    (10, self.height - 30),
+                    (10, self.height - 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (0, 255, 0),
                     1
                 )
 
+            # Klawisze sterujące
+            controls_text = "Controls: q/ESC=exit, p=pause, r=reset vcam, t=test pattern, d=debug"
+            cv2.putText(
+                preview,
+                controls_text,
+                (10, self.height - 70),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (255, 255, 255),
+                1
+            )
+
             # Wyświetlamy podgląd oryginalnego obrazu
             cv2.imshow("Podgląd kamery", preview)
 
             # Jeśli mamy stick figure, wyświetlamy go również
             if stick_figure is not None:
+                # Dodajemy informację o klawiszach do obrazu stick figure
+                cv2.putText(
+                    stick_figure,
+                    vcam_status,
+                    (10, self.height - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (100, 100, 100) if self.virtual_camera.is_initialized else (50, 50, 200),
+                    1
+                )
                 cv2.imshow("Stick Figure", stick_figure)
 
         except Exception as e:
@@ -435,8 +523,20 @@ class StickFigureWebcam:
             )
 
         elif key == ord('t'):  # t - wysłanie wzoru testowego
-            self.virtual_camera.send_test_pattern()
-            self.logger.info("Main", "Wysłano wzór testowy (klawisz t)", log_type="VIRTUAL_CAM")
+            success = self.virtual_camera.send_test_pattern()
+            self.logger.info(
+                "Main",
+                f"Wysłano wzór testowy (klawisz t) - {'sukces' if success else 'niepowodzenie'}",
+                log_type="VIRTUAL_CAM"
+            )
+
+        elif key == ord('r'):  # r - reset wirtualnej kamery
+            self.logger.info("Main", "Resetowanie wirtualnej kamery (klawisz r)", log_type="VIRTUAL_CAM")
+            if self.virtual_camera.reset() and self.virtual_camera.initialize():
+                self.logger.info("Main", "Reset wirtualnej kamery zakończony powodzeniem", log_type="VIRTUAL_CAM")
+                self.virtual_camera.send_test_pattern()
+            else:
+                self.logger.warning("Main", "Reset wirtualnej kamery nie powiódł się", log_type="VIRTUAL_CAM")
 
         elif key == ord('l'):  # l - przełączenie adaptacyjnego oświetlenia
             if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
@@ -540,21 +640,41 @@ def main():
     # Parsowanie argumentów linii poleceń
     args = parse_arguments()
 
-    # Konfiguruję logger przed sprawdzeniem wymagań
+    # Tworzymy katalog logs bezwarunkowo, jeśli nie istnieje
+    try:
+        if not os.path.exists("logs"):
+            os.makedirs("logs", exist_ok=True)
+            print(f"Utworzono katalog logów: {os.path.abspath('logs')}")
+    except Exception as e:
+        print(f"UWAGA: Nie można utworzyć katalogu logów: {e}")
+
+    # Konfiguruję ścieżkę pliku logów
     log_file = args.log_file
-    if log_file is None and not os.path.exists("logs"):
-        os.makedirs("logs", exist_ok=True)
-        log_file = os.path.join("logs", f"stick_figure_webcam_{time.strftime('%Y%m%d_%H%M%S')}.log")
+    if log_file is None:
+        # Generujemy domyślną nazwę pliku logów zawierającą datę i czas
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        log_file = os.path.join("logs", f"stick_figure_webcam_{timestamp}.log")
+        print(f"Używam domyślnego pliku logów: {log_file}")
 
     log_level = args.log_level
     debug = args.debug
 
-    # Inicjalizacja loggera
-    logger = CustomLogger(
-        log_file=log_file,
-        console_level="DEBUG" if debug else log_level,
-        file_level="DEBUG"
-    )
+    # Inicjalizacja loggera z explicit ustawionym plikiem logów
+    try:
+        logger = CustomLogger(
+            log_file=log_file,  # Zawsze przekazujemy ścieżkę pliku
+            console_level="DEBUG" if debug else log_level,
+            file_level="DEBUG",  # Zawsze zapisujemy szczegółowe logi do pliku
+            verbose=debug  # Dodatkowe szczegóły dla trybu debug
+        )
+        logger.info("Main", f"Inicjalizacja logowania do pliku: {log_file}", log_type="CONFIG")
+    except Exception as e:
+        print(f"BŁĄD: Nie można zainicjalizować loggera: {e}")
+        # Fallback do podstawowego loggera jeśli CustomLogger zawiedzie
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger("fallback")
+        logger.error(f"Nie można zainicjalizować CustomLogger: {e}")
 
     logger.info("Main", "Uruchamianie Stick Figure Webcam", log_type="CONFIG")
 
@@ -615,6 +735,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import logging  # Potrzebne do ustawienia poziomu logowania
-
     main()

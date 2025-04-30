@@ -4,7 +4,7 @@
 
 import platform
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import cv2
 import numpy as np
@@ -25,8 +25,10 @@ class VirtualCamera:
             width: int = 640,
             height: int = 480,
             fps: int = 30,
-            device_name: str = "Stick Figure Webcam",
-            logger: Optional[CustomLogger] = None
+            device_name: str = None,  # Domyślnie None dla auto-wykrywania
+            logger: Optional[CustomLogger] = None,
+            max_retries: int = 3,  # Maksymalna liczba prób
+            retry_delay: float = 1.0  # Opóźnienie między próbami
     ):
         """
         Inicjalizacja wirtualnej kamery.
@@ -35,33 +37,112 @@ class VirtualCamera:
             width (int): Szerokość obrazu wirtualnej kamery
             height (int): Wysokość obrazu wirtualnej kamery
             fps (int): Liczba klatek na sekundę
-            device_name (str): Nazwa wyświetlana dla urządzenia
+            device_name (str, optional): Nazwa wyświetlana dla urządzenia (domyślnie: auto-wykrywana)
             logger (CustomLogger, optional): Logger do zapisywania komunikatów
+            max_retries (int): Maksymalna liczba prób inicjalizacji
+            retry_delay (float): Opóźnienie między próbami w sekundach
         """
         self.width = width
         self.height = height
         self.fps = fps
         self.device_name = device_name
         self.logger = logger or CustomLogger()
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
 
         self.cam = None
         self.is_initialized = False
+        self.initialization_failed = False  # Flaga oznaczająca definitywne niepowodzenie
         self.frame_count = 0
         self.last_frame_time = 0
         self.performance = PerformanceMonitor("VirtualCamera")
+        self.retry_count = 0  # Licznik prób inicjalizacji
 
         # Informacje o wirtualnej kamerze
         self.camera_info = {
-            "name": device_name,
+            "name": device_name if device_name else "Auto-detected",
             "resolution": (width, height),
             "fps": fps,
             "backend": "unknown",
-            "system": platform.system()
+            "system": platform.system(),
+            "available_devices": []
         }
 
         self.fps_sleep_time = 1.0 / fps if fps > 0 else 0
 
-        # Na razie nie uruchamiamy automatycznie, będzie to robione przy pierwszym zapytaniu
+        # Automatycznie wykrywamy dostępne urządzenia
+        self._detect_available_devices()
+
+    def _detect_available_devices(self) -> None:
+        """
+        Wykrywa dostępne urządzenia wirtualnej kamery.
+        """
+        try:
+            # Próba pobrania dostępnych backenów
+            available_backends = []
+            try:
+                if hasattr(pyvirtualcam, 'get_available_backends'):
+                    available_backends = pyvirtualcam.get_available_backends()
+                    self.logger.debug(
+                        "VirtualCamera",
+                        f"Dostępne backendy: {available_backends}",
+                        log_type="VIRTUAL_CAM"
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    "VirtualCamera",
+                    f"Błąd podczas pobierania dostępnych backenów: {str(e)}",
+                    log_type="VIRTUAL_CAM"
+                )
+
+            # Próba automatycznego wykrycia nazw urządzeń
+            system = platform.system()
+            self.camera_info["available_devices"] = self._get_system_specific_device_names(system)
+
+        except Exception as e:
+            self.logger.warning(
+                "VirtualCamera",
+                f"Błąd podczas wykrywania dostępnych urządzeń: {str(e)}",
+                log_type="VIRTUAL_CAM"
+            )
+
+    def _get_system_specific_device_names(self, system: str) -> List[str]:
+        """
+        Zwraca listę możliwych nazw urządzeń wirtualnej kamery dla danego systemu.
+
+        Args:
+            system (str): Nazwa systemu operacyjnego
+
+        Returns:
+            List[str]: Lista możliwych nazw urządzeń
+        """
+        if system == "Windows":
+            return [
+                "OBS Virtual Camera",
+                "OBS Camera",
+                "OBS-Camera",
+                "Unity Video Capture",
+                "XSplit VCam",
+                "e2eSoft VCam",
+                "Stick Figure Webcam"
+            ]
+        elif system == "Darwin":  # macOS
+            return [
+                "OBS Virtual Camera",
+                "NDI Video",
+                "CamTwist",
+                "Stick Figure Webcam"
+            ]
+        elif system == "Linux":
+            return [
+                "/dev/video0",
+                "/dev/video1",
+                "/dev/video2",
+                "/dev/video20",
+                "Stick Figure Webcam"
+            ]
+        else:
+            return ["Stick Figure Webcam"]
 
     def initialize(self) -> bool:
         """
@@ -73,10 +154,17 @@ class VirtualCamera:
         if self.is_initialized:
             return True
 
+        # Jeśli inicjalizacja już definitywnie się nie powiodła i wyczerpano próby,
+        # nie próbujemy ponownie
+        if self.initialization_failed:
+            return False
+
         try:
+            self.retry_count += 1
             self.logger.debug(
                 "VirtualCamera",
-                f"Inicjalizacja wirtualnej kamery: {self.width}x{self.height} @ {self.fps} FPS",
+                f"Inicjalizacja wirtualnej kamery (próba {self.retry_count}/{self.max_retries}): "
+                f"{self.width}x{self.height} @ {self.fps} FPS",
                 log_type="VIRTUAL_CAM"
             )
 
@@ -87,49 +175,100 @@ class VirtualCamera:
             system = platform.system()
             backend_params = {}
 
-            if system == "Windows":
-                # Na Windows można określić nazwę urządzenia
-                backend_params["device"] = self.device_name
-            elif system == "Darwin":  # macOS
-                # macOS może wymagać OBS Virtual Camera plugin
-                self.logger.debug(
-                    "VirtualCamera",
-                    "macOS wykryty - upewnij się, że OBS Virtual Camera jest zainstalowany",
-                    log_type="VIRTUAL_CAM"
-                )
-            elif system == "Linux":
-                # Linux może wymagać v4l2loopback
-                self.logger.debug(
-                    "VirtualCamera",
-                    "Linux wykryty - upewnij się, że moduł v4l2loopback jest załadowany",
-                    log_type="VIRTUAL_CAM"
-                )
+            # Wybieramy nazwę urządzenia:
+            # 1. Priorytet ma nazwa podana przez użytkownika
+            # 2. Używamy domyślnej nazwy dla danego systemu
+            if self.device_name:
+                if system == "Windows":
+                    backend_params["device"] = self.device_name
+            else:
+                # Dla Windows próbujemy najpierw OBS Virtual Camera
+                if system == "Windows":
+                    backend_params["device"] = "OBS Virtual Camera"
 
             # Próba utworzenia wirtualnej kamery z automatyczną detekcją backendu
-            self.cam = pyvirtualcam.Camera(
-                width=self.width,
-                height=self.height,
-                fps=self.fps,
-                fmt=fmt,
-                **backend_params
-            )
+            try:
+                self.cam = pyvirtualcam.Camera(
+                    width=self.width,
+                    height=self.height,
+                    fps=self.fps,
+                    fmt=fmt,
+                    **backend_params
+                )
 
-            # Aktualizacja informacji o backendzie
-            self.camera_info["backend"] = self.cam.backend
+                # Aktualizacja informacji o backendzie i rzeczywistej nazwie urządzenia
+                self.camera_info["backend"] = self.cam.backend
+                if hasattr(self.cam, 'device'):
+                    self.camera_info["name"] = self.cam.device
 
-            self.logger.info(
-                "VirtualCamera",
-                f"Wirtualna kamera uruchomiona z backendem: {self.cam.backend}",
-                log_type="VIRTUAL_CAM"
-            )
+                self.is_initialized = True
+                self.retry_count = 0  # Resetujemy licznik prób
 
-            self.is_initialized = True
-            self.last_frame_time = time.time()
+                self.logger.info(
+                    "VirtualCamera",
+                    f"Wirtualna kamera uruchomiona z backendem: {self.cam.backend}, "
+                    f"urządzenie: {getattr(self.cam, 'device', 'default')}",
+                    log_type="VIRTUAL_CAM"
+                )
 
-            # Powiadom logger o statusie
-            self.logger.virtual_camera_status(True, self.camera_info)
+                self.last_frame_time = time.time()
 
-            return True
+                # Powiadom logger o statusie
+                self.logger.virtual_camera_status(True, self.camera_info)
+
+                return True
+
+            except Exception as first_e:
+                # Jeśli pierwsza próba się nie powiedzie, próbujemy z alternatywnymi nazwami urządzeń
+                if system == "Windows" and self.retry_count <= 1:
+                    device_names = self._get_system_specific_device_names(system)
+
+                    for device_name in device_names:
+                        try:
+                            self.logger.debug(
+                                "VirtualCamera",
+                                f"Próba inicjalizacji z alternatywną nazwą urządzenia: {device_name}",
+                                log_type="VIRTUAL_CAM"
+                            )
+
+                            self.cam = pyvirtualcam.Camera(
+                                width=self.width,
+                                height=self.height,
+                                fps=self.fps,
+                                fmt=fmt,
+                                device=device_name
+                            )
+
+                            # Sukces - zapisujemy informacje
+                            self.camera_info["backend"] = self.cam.backend
+                            self.camera_info["name"] = device_name
+                            self.is_initialized = True
+                            self.retry_count = 0
+
+                            self.logger.info(
+                                "VirtualCamera",
+                                f"Wirtualna kamera uruchomiona z alternatywną nazwą: {device_name}, "
+                                f"backend: {self.cam.backend}",
+                                log_type="VIRTUAL_CAM"
+                            )
+
+                            self.last_frame_time = time.time()
+                            self.logger.virtual_camera_status(True, self.camera_info)
+                            return True
+
+                        except Exception as e:
+                            # Kontynuujemy próby z innymi nazwami
+                            self.logger.debug(
+                                "VirtualCamera",
+                                f"Próba z urządzeniem {device_name} nie powiodła się: {str(e)}",
+                                log_type="VIRTUAL_CAM"
+                            )
+
+                    # Żadna alternatywna nazwa nie zadziałała, zgłaszamy oryginalny błąd
+                    raise first_e
+                else:
+                    # Dla innych systemów lub po wyczerpaniu alternatyw, zgłaszamy oryginalny błąd
+                    raise first_e
 
         except Exception as e:
             error_info = {"error": str(e)}
@@ -144,6 +283,19 @@ class VirtualCamera:
             # Dodatkowe porady dotyczące rozwiązywania problemów
             self._provide_troubleshooting_info()
 
+            # Sprawdzamy czy wyczerpaliśmy wszystkie próby
+            if self.retry_count >= self.max_retries:
+                self.initialization_failed = True
+                self.logger.warning(
+                    "VirtualCamera",
+                    f"Wyczerpano limit {self.max_retries} prób inicjalizacji wirtualnej kamery. "
+                    "Rezygnuję z dalszych prób.",
+                    log_type="VIRTUAL_CAM"
+                )
+            else:
+                # Czekamy przed kolejną próbą
+                time.sleep(self.retry_delay)
+
             return False
 
     def _provide_troubleshooting_info(self) -> None:
@@ -156,14 +308,21 @@ class VirtualCamera:
             self.logger.info(
                 "VirtualCamera",
                 "Rozwiązywanie problemów (Windows): Upewnij się, że OBS Studio "
-                "jest zainstalowany i virtual camera jest uruchomiona.",
+                "jest zainstalowany i virtual camera jest uruchomiona. "
+                "1. Otwórz OBS Studio. "
+                "2. W menu wybierz Narzędzia -> Virtual Camera. "
+                "3. Kliknij 'Start Virtual Camera'.",
                 log_type="VIRTUAL_CAM"
             )
         elif system == "Darwin":  # macOS
             self.logger.info(
                 "VirtualCamera",
                 "Rozwiązywanie problemów (macOS): Zainstaluj OBS Studio i plugin "
-                "obs-mac-virtualcam. Alternatywnie możesz użyć CamTwist.",
+                "obs-mac-virtualcam. Alternatywnie możesz użyć CamTwist. "
+                "Szczegółowe instrukcje: "
+                "1. Zainstaluj OBS ze strony https://obsproject.com "
+                "2. Zainstaluj plugin obs-mac-virtualcam "
+                "3. Uruchom OBS i włącz Virtual Camera",
                 log_type="VIRTUAL_CAM"
             )
         elif system == "Linux":
@@ -172,7 +331,8 @@ class VirtualCamera:
                 "Rozwiązywanie problemów (Linux): Upewnij się, że "
                 "v4l2loopback jest zainstalowany i załadowany:\n"
                 "sudo apt-get install v4l2loopback-dkms\n"
-                "sudo modprobe v4l2loopback",
+                "sudo modprobe v4l2loopback\n"
+                "Po załadowaniu modułu, sprawdź dostępne urządzenia: ls -l /dev/video*",
                 log_type="VIRTUAL_CAM"
             )
 
@@ -186,7 +346,13 @@ class VirtualCamera:
         Returns:
             bool: True jeśli udało się wysłać klatkę, False w przeciwnym razie
         """
+        # Jeśli inicjalizacja definitywnie się nie powiodła, nie próbuj ponownie
+        if self.initialization_failed:
+            return False
+
+        # Próba inicjalizacji, ale tylko jeśli jeszcze nie było definitywnego niepowodzenia
         if not self.is_initialized and not self.initialize():
+            # Zwracamy False, ale nie zgłaszamy błędu - już to zrobiliśmy w initialize()
             return False
 
         if self.cam is None:
@@ -209,10 +375,12 @@ class VirtualCamera:
 
             # Obliczanie czasu do następnej klatki, aby utrzymać stały FPS
             current_time = time.time()
-            elapsed = current_time - self.last_frame_time
+
+            # Zabezpieczenie przed dzieleniem przez zero - używamy epsilon
+            elapsed = max(0.000001, current_time - self.last_frame_time)  # Minimalna wartość 1µs
 
             # Jeśli potrzeba, poczekaj aby utrzymać stały FPS
-            if elapsed < self.fps_sleep_time:
+            if self.fps_sleep_time > 0 and elapsed < self.fps_sleep_time:
                 time.sleep(self.fps_sleep_time - elapsed)
 
             self.last_frame_time = time.time()
@@ -220,8 +388,9 @@ class VirtualCamera:
 
             # Co 100 klatek logujemy informacje
             if self.frame_count % 100 == 0:
-                # Oblicz rzeczywisty FPS
-                real_fps = 1.0 / (time.time() - current_time) if elapsed > 0 else self.fps
+                # Oblicz rzeczywisty FPS (z zabezpieczeniem przed dzieleniem przez zero)
+                # Używamy wartości self.fps jeśli elapsed jest zbyt małe
+                real_fps = 1.0 / elapsed if elapsed > 0.001 else self.fps
 
                 self.logger.debug(
                     "VirtualCamera",
@@ -234,18 +403,30 @@ class VirtualCamera:
 
             # Co 300 klatek logujemy informacje o wydajności
             if self.frame_count % 300 == 0:
-                real_fps = 1.0 / elapsed if elapsed > 0 else self.fps
+                # Zabezpieczenie przed dzieleniem przez zero
+                real_fps = 1.0 / max(0.001, elapsed)
                 self.logger.performance_metrics(real_fps, processing_time, "VirtualCamera")
 
             return True
 
         except Exception as e:
+            self.performance.stop_timer()
             self.logger.error(
                 "VirtualCamera",
                 f"Błąd podczas wysyłania klatki: {str(e)}",
                 log_type="VIRTUAL_CAM",
                 error={"error": str(e)}
             )
+
+            # Resetujemy stan kamery, aby spróbować ponownej inicjalizacji
+            self.is_initialized = False
+            if self.cam is not None:
+                try:
+                    self.cam.close()
+                except:
+                    pass
+                self.cam = None
+
             return False
 
     def send_black_frame(self) -> bool:
@@ -255,6 +436,9 @@ class VirtualCamera:
         Returns:
             bool: True jeśli udało się wysłać klatkę, False w przeciwnym razie
         """
+        if self.initialization_failed:
+            return False
+
         black_frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         return self.send_frame(black_frame)
 
@@ -265,6 +449,9 @@ class VirtualCamera:
         Returns:
             bool: True jeśli udało się wysłać klatkę, False w przeciwnym razie
         """
+        if self.initialization_failed:
+            return False
+
         white_frame = np.ones((self.height, self.width, 3), dtype=np.uint8) * 255
         return self.send_frame(white_frame)
 
@@ -275,6 +462,9 @@ class VirtualCamera:
         Returns:
             bool: True jeśli udało się wysłać klatkę, False w przeciwnym razie
         """
+        if self.initialization_failed:
+            return False
+
         # Utworzenie wzoru testowego - kolorowe paski, siatka, tekst
         frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
@@ -312,10 +502,20 @@ class VirtualCamera:
         text_x = (self.width - text_size[0]) // 2
         text_y = (self.height + text_size[1]) // 2
 
+        # Status inicjalizacji - czerwony jeśli nie działa, zielony jeśli działa
+        status_color = (0, 255, 0) if self.is_initialized else (0, 0, 255)  # Zielony/Czerwony
+        status_text = "VIRTUAL CAMERA READY" if self.is_initialized else "VIRTUAL CAMERA NOT WORKING"
+        status_text_size, _ = cv2.getTextSize(status_text, font, 0.8, 2)
+        status_x = (self.width - status_text_size[0]) // 2
+        status_y = (self.height + status_text_size[1]) // 2 + 30
+
         # Obramowanie tekstu dla lepszej widoczności
         cv2.putText(frame, text, (text_x - 1, text_y - 1), font, 1, (0, 0, 0), 2)
         cv2.putText(frame, text, (text_x + 1, text_y + 1), font, 1, (0, 0, 0), 2)
         cv2.putText(frame, text, (text_x, text_y), font, 1, (255, 255, 255), 2)
+
+        # Status
+        cv2.putText(frame, status_text, (status_x, status_y), font, 0.8, status_color, 2)
 
         return self.send_frame(frame)
 
@@ -353,6 +553,10 @@ class VirtualCamera:
         self.height = height
         self.camera_info["resolution"] = (width, height)
 
+        # Resetujemy flagę niepowodzenia inicjalizacji
+        self.initialization_failed = False
+        self.retry_count = 0
+
         self.logger.info(
             "VirtualCamera",
             f"Ustawiono nową rozdzielczość: {width}x{height}. "
@@ -386,6 +590,10 @@ class VirtualCamera:
         self.camera_info["fps"] = fps
         self.fps_sleep_time = 1.0 / fps if fps > 0 else 0
 
+        # Resetujemy flagę niepowodzenia inicjalizacji
+        self.initialization_failed = False
+        self.retry_count = 0
+
         self.logger.info(
             "VirtualCamera",
             f"Ustawiono nowy FPS: {fps}. "
@@ -394,6 +602,34 @@ class VirtualCamera:
         )
 
         return True
+
+    def reset(self) -> bool:
+        """
+        Resetuje wirtualną kamerę, zamykając bieżącą instancję i resetując flagi stanu.
+
+        Returns:
+            bool: True jeśli reset się powiódł
+        """
+        try:
+            self.close()
+            self.is_initialized = False
+            self.initialization_failed = False
+            self.retry_count = 0
+
+            self.logger.info(
+                "VirtualCamera",
+                "Wirtualna kamera została zresetowana",
+                log_type="VIRTUAL_CAM"
+            )
+
+            return True
+        except Exception as e:
+            self.logger.error(
+                "VirtualCamera",
+                f"Błąd podczas resetowania wirtualnej kamery: {str(e)}",
+                log_type="VIRTUAL_CAM"
+            )
+            return False
 
     def close(self) -> None:
         """
