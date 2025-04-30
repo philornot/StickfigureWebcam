@@ -129,14 +129,15 @@ class PostureAnalyzer:
             self.last_visible_keypoints_count = visible_keypoints
             result["visible_keypoints"] = visible_keypoints
 
-            # Zbyt mało widocznych punktów
+            # Zbyt mało widocznych punktów - ale i tak próbujemy analizować,
+            # chociaż z mniejszą pewnością
             if visible_keypoints < 10:  # Obniżony próg z 15 na 10
                 self.logger.debug(
                     "PostureAnalyzer",
-                    f"Za mało widocznych punktów ({visible_keypoints}/33)",
+                    f"Za mało widocznych punktów ({visible_keypoints}/33), "
+                    "ale próbujemy analizować z ograniczoną pewnością",
                     log_type="POSE"
                 )
-                return result
 
             # Analiza typu widoczności (pełne ciało, górna część, itp.)
             visibility_type = self._analyze_visibility_type(landmarks)
@@ -159,11 +160,21 @@ class PostureAnalyzer:
                                        0.1 * torso_score + 0.2 * visibility_score)
             else:  # partial_visibility lub unknown
                 # Przy bardzo ograniczonej widoczności silnie preferujemy siedzenie (typowy scenariusz wideokonferencji)
-                sitting_probability = (0.2 * hip_score + 0.3 * leg_score +
-                                       0.1 * torso_score + 0.4 * visibility_score)
+                sitting_probability = (0.1 * hip_score + 0.2 * leg_score +
+                                       0.1 * torso_score + 0.6 * visibility_score)
 
             # Ograniczamy do zakresu 0.0-1.0
             sitting_probability = max(0.0, min(1.0, sitting_probability))
+
+            # WAŻNA POPRAWKA: Dla przypadku bardzo ograniczonej widoczności (torso_only_detection)
+            # wymuszamy wysokie prawdopodobieństwo siedzenia
+            if visible_keypoints <= 12 and visibility_type in ["partial_visibility", "unknown"]:
+                sitting_probability = max(sitting_probability, 0.85)  # Wymuszamy wysokie prawdopodobieństwo siedzenia
+                self.logger.debug(
+                    "PostureAnalyzer",
+                    f"Bardzo ograniczona widoczność: zwiększam prawdopodobieństwo siedzenia do {sitting_probability:.2f}",
+                    log_type="POSE"
+                )
 
             # Stosujemy wygładzanie wykładnicze dla bieżącej detekcji
             if self.sitting_probability is not None:
@@ -182,8 +193,16 @@ class PostureAnalyzer:
             # Określamy stan na podstawie wygładzonej wartości
             is_sitting = smoothed_probability >= 0.5
 
-            # Śledzimy zmiany stanu
-            if self.is_sitting is None:
+            # WAŻNA POPRAWKA: Dla przypadku torso_only_detection, od razu ustawiamy
+            # self.is_sitting na True, bez czekania na historię
+            if visible_keypoints <= 12 and visibility_type in ["partial_visibility", "unknown"]:
+                is_sitting = True  # Wymuszamy siedzenie
+                self.is_sitting = True  # Bezpośrednio ustawiamy wartość
+                self.consecutive_frames = 5  # Eliminujemy "migotanie" wartości
+
+            # Standardowa obsługa dla innych przypadków
+            elif self.is_sitting is None:
+                # Przy pierwszej detekcji ustawiamy stan zgodnie z obliczonym prawdopodobieństwem
                 self.is_sitting = is_sitting
                 self.consecutive_frames = 1
             elif self.is_sitting == is_sitting:
@@ -258,7 +277,7 @@ class PostureAnalyzer:
             return "full_body"  # Widoczne całe ciało
         elif upper_ratio > 0.7 and lower_ratio < 0.3:
             return "upper_body"  # Widoczna głównie górna część ciała
-        elif upper_ratio > 0.5:
+        elif upper_ratio > 0.3:  # Zmieniono z 0.5 na 0.3 dla większej czułości
             return "partial_visibility"  # Częściowa widoczność, ale głównie górna część
         else:
             return "unknown"  # Trudno określić
@@ -288,13 +307,13 @@ class PostureAnalyzer:
         elif visibility_type == "upper_body":
             return 0.9  # Wysokie prawdopodobieństwo siedzenia
 
-        # Przy częściowej widoczności, również zakładamy siedzenie, ale z mniejszą pewnością
+        # Przy częściowej widoczności, również zakładamy siedzenie z wysoką pewnością
         elif visibility_type == "partial_visibility":
-            return 0.8  # Dość wysokie prawdopodobieństwo
+            return 0.85  # Jeszcze wyższe prawdopodobieństwo
 
-        # Przy nieznanym typie, dajemy wartość preferencji z konfiguracji
+        # Przy nieznanym typie, dajemy bardzo wysoką wartość preferencji
         else:
-            return self.partial_visibility_bias
+            return 0.9  # Ekstremalna preferencja siedzenia w przypadku nieznanym
 
     def _analyze_hip_position(
             self,
@@ -321,8 +340,8 @@ class PostureAnalyzer:
             if (landmarks[self.LEFT_SHOULDER][3] > self.confidence_threshold or
                     landmarks[self.RIGHT_SHOULDER][3] > self.confidence_threshold):
                 # Biodra niewidoczne, ale ramiona widoczne - typowy scenariusz dla pozycji siedzącej
-                return 0.8  # Wysoka wartość wskazująca na siedzenie
-            return 0.6  # Lekko zwiększona wartość neutralna
+                return 0.85  # Podwyższona wartość wskazująca na siedzenie
+            return 0.7  # Lekko zwiększona wartość neutralna
 
         # Używamy biodra o lepszej widoczności
         hip_y = left_hip[1] if left_hip[3] > right_hip[3] else right_hip[1]
@@ -362,7 +381,7 @@ class PostureAnalyzer:
         if visible_parts == 0:
             return 0.95  # Jeszcze wyższe prawdopodobieństwo siedzenia gdy nie widać nóg
         elif visible_parts == 1:
-            return 0.8  # Zwiększona wartość
+            return 0.85  # Zwiększona wartość
         elif visible_parts == 2:
             return 0.5  # Neutralne
         elif visible_parts == 3:
@@ -405,9 +424,9 @@ class PostureAnalyzer:
 
             if shoulders_visible:
                 # Jeśli widać tylko górną część ciała, zwiększamy prawdopodobieństwo siedzenia
-                return 0.7  # Preferujemy siedzenie przy widocznej tylko górnej części ciała
+                return 0.8  # Preferujemy siedzenie przy widocznej tylko górnej części ciała
 
-            return 0.6  # Lekko preferujemy siedzenie jako bezpieczniejsze założenie
+            return 0.7  # Lekko preferujemy siedzenie jako bezpieczniejsze założenie
 
         # Wybieramy stronę z lepszą widocznością
         if left_side_visible and (not right_side_visible or

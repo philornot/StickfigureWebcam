@@ -4,10 +4,8 @@
 Testy jednostkowe dla modułu sprawdzania wymagań systemowych (system_check.py).
 """
 
-import os
-import platform
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from src.utils.system_check import SystemCheck, check_system_requirements
 
@@ -34,21 +32,35 @@ class TestSystemCheck(unittest.TestCase):
         self.mediapipe_patch = patch('src.utils.system_check.MEDIAPIPE_AVAILABLE', True)
         self.mediapipe_available = self.mediapipe_patch.start()
 
-        # Patchujemy cv2.VideoCapture
-        self.cv2_videocapture_patch = patch('cv2.VideoCapture')
-        self.mock_cv2_videocapture = self.cv2_videocapture_patch.start()
-
-        # Mock dla obiektu kamery
+        # ZMIANA: Całkowicie nowe podejście do mockowania cv2.VideoCapture
+        # Zamiast próbować mockować metodę get(), mockujemy właściwości kamery jako typy PropertyMock
         self.mock_camera = MagicMock()
         self.mock_camera.isOpened.return_value = True
         self.mock_camera.read.return_value = (True, MagicMock())
-        self.mock_camera.get.side_effect = lambda prop: {
-            0: 640,  # CAP_PROP_FRAME_WIDTH
-            1: 480,  # CAP_PROP_FRAME_HEIGHT
-            5: 30  # CAP_PROP_FPS
-        }.get(prop, 0)
 
-        self.mock_cv2_videocapture.return_value = self.mock_camera
+        # Przygotowujemy stałe dla property ID OpenCV
+        CAP_PROP_FRAME_WIDTH = 3
+        CAP_PROP_FRAME_HEIGHT = 4
+        CAP_PROP_FPS = 5
+
+        # Przygotowujemy ręcznie zmockowane wartości zwracane przez get()
+        self.camera_properties = {
+            CAP_PROP_FRAME_WIDTH: 640,
+            CAP_PROP_FRAME_HEIGHT: 480,
+            CAP_PROP_FPS: 30
+        }
+
+        # Mockujemy metodę get()
+        def mock_get(prop_id):
+            # Konwertujemy prop_id na int, bo może być przekazany jako float
+            prop_id = int(prop_id)
+            return self.camera_properties.get(prop_id, 0)
+
+        self.mock_camera.get = mock_get
+
+        # Patchujemy konstruktor cv2.VideoCapture
+        self.cv2_videocapture_patch = patch('cv2.VideoCapture', return_value=self.mock_camera)
+        self.mock_cv2_videocapture = self.cv2_videocapture_patch.start()
 
         # Inicjalizacja SystemCheck
         self.system_check = SystemCheck(logger=self.mock_logger)
