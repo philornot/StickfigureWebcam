@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# src/main.py
+# src/main_updated.py
+# Zaktualizowana wersja main.py z integracją FaceMesh
 
 import argparse
 import logging
@@ -11,10 +12,11 @@ from typing import Dict, Any, Optional
 
 import cv2
 import numpy as np
+from src.drawing.stick_figure import StickFigureRenderer
+from src.face.face_mesh_detector import FaceMeshDetector
 
 from src.camera.camera_capture import CameraCapture
 from src.camera.virtual_camera import VirtualCamera
-from src.drawing.stick_figure import StickFigureRenderer
 from src.lighting.adaptive_colors import AdaptiveLightingManager
 from src.pose.pose_detector import PoseDetector
 from src.pose.posture_analyzer import PostureAnalyzer
@@ -27,6 +29,7 @@ from src.utils.system_check import check_system_requirements
 class StickFigureWebcam:
     """
     Główna klasa aplikacji, która łączy wszystkie komponenty i zarządza przepływem danych.
+    Wersja rozszerzona o detekcję twarzy przy użyciu MediaPipe FaceMesh.
     """
 
     def __init__(
@@ -40,8 +43,10 @@ class StickFigureWebcam:
         log_file: Optional[str] = None,
         show_preview: bool = True,
         flip_camera: bool = True,
-        adaptive_lighting: bool = False,  # Dodano parametr
-        adaptation_speed: float = 0.01,  # Dodano parametr szybkości adaptacji
+        adaptive_lighting: bool = False,
+        adaptation_speed: float = 0.01,
+        use_face_mesh: bool = True,  # Nowy parametr do włączania/wyłączania face mesh
+        face_detail_level: str = "medium",  # Nowy parametr do ustawiania poziomu szczegółowości twarzy
         logger: Optional[CustomLogger] = None
     ):
         """
@@ -59,6 +64,8 @@ class StickFigureWebcam:
             flip_camera (bool): Czy odbijać obraz z kamery w poziomie
             adaptive_lighting (bool): Czy włączyć adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia
             adaptation_speed (float): Szybkość adaptacji kolorów (0.001-0.1)
+            use_face_mesh (bool): Czy używać detekcji twarzy FaceMesh
+            face_detail_level (str): Poziom szczegółowości twarzy ("low", "medium", "high")
             logger (Optional[CustomLogger]): Opcjonalny logger (zamiast tworzenia nowego)
         """
         # Konfiguracja
@@ -69,6 +76,8 @@ class StickFigureWebcam:
         self.show_preview = show_preview
         self.flip_camera = flip_camera
         self.adaptive_lighting = adaptive_lighting
+        self.use_face_mesh = use_face_mesh
+        self.face_detail_level = face_detail_level
 
         # Flagi stanu
         self.running = False
@@ -94,7 +103,7 @@ class StickFigureWebcam:
                 verbose=debug
             )
 
-        self.logger.info("Main", "Inicjalizacja Stick Figure Webcam", log_type="CONFIG")
+        self.logger.info("Main", "Inicjalizacja Stick Figure Webcam z Face Mesh", log_type="CONFIG")
 
         # Monitor wydajności
         self.performance = PerformanceMonitor("Main")
@@ -143,8 +152,23 @@ class StickFigureWebcam:
                 logger=self.logger
             )
 
+            # Inicjalizacja detektora twarzy FaceMesh (nowy komponent)
+            if self.use_face_mesh:
+                self.logger.info("Main", "Inicjalizacja detektora twarzy FaceMesh", log_type="FACE")
+                self.face_detector = FaceMeshDetector(
+                    max_num_faces=1,
+                    min_detection_confidence=0.6,
+                    min_tracking_confidence=0.6,
+                    refine_landmarks=True,  # Dokładniejsze punkty dla oczu i ust
+                    logger=self.logger
+                )
+            else:
+                self.face_detector = None
+                self.logger.info("Main", "Detekcja twarzy FaceMesh wyłączona", log_type="FACE")
+
             # Inicjalizacja renderera stick figure
             self.logger.info("Main", "Inicjalizacja renderera stick figure", log_type="DRAWING")
+            # Używamy nowej wersji renderera, która obsługuje integrację z FaceMesh
             self.stick_figure_renderer = StickFigureRenderer(
                 canvas_width=width,
                 canvas_height=height,
@@ -152,6 +176,8 @@ class StickFigureWebcam:
                 head_radius_factor=0.075,
                 smooth_factor=0.3,
                 smoothing_history=3,
+                use_face_mesh=self.use_face_mesh,
+                face_detail_level=self.face_detail_level,
                 logger=self.logger
             )
 
@@ -175,7 +201,7 @@ class StickFigureWebcam:
 
             self.logger.info(
                 "Main",
-                f"Stick Figure Webcam zainicjalizowany pomyślnie ({width}x{height} @ {fps}FPS)",
+                f"Stick Figure Webcam z Face Mesh zainicjalizowany pomyślnie ({width}x{height} @ {fps}FPS)",
                 log_type="CONFIG"
             )
 
@@ -240,7 +266,7 @@ class StickFigureWebcam:
                     if virtual_camera_working:
                         self.virtual_camera.send_test_pattern()
                     if self.show_preview:
-                        self._show_preview(frame, None, None)
+                        self._show_preview(frame, None, None, None)
 
                     # Dodajemy obsługę klawiszy w trybie pauzy
                     # bez tego aplikacja nie reaguje na klawisze po wejściu w stan pauzy
@@ -285,10 +311,28 @@ class StickFigureWebcam:
                 # 2. Detekcja pozy
                 pose_detected, pose_data = self.pose_detector.detect_pose(frame)
 
+                # 3. Detekcja twarzy (nowy krok)
+                face_data = None
+                if self.use_face_mesh and self.face_detector is not None:
+                    face_detected, face_data = self.face_detector.detect_face(frame)
+
+                    if face_detected:
+                        self.logger.debug(
+                            "Main",
+                            f"Wykryto twarz, ekspresje: {face_data.get('expressions', {})}",
+                            log_type="FACE"
+                        )
+                    elif self.debug and self.frame_count % 50 == 0:
+                        self.logger.debug(
+                            "Main",
+                            "Nie wykryto twarzy w tej klatce",
+                            log_type="FACE"
+                        )
+
                 if not pose_detected:
                     # Jeśli nie wykryto pozy, pokazujemy oryginalny obraz lub pusty
                     if self.debug and self.show_preview:
-                        self._show_preview(frame, None, None)
+                        self._show_preview(frame, None, None, face_data)
 
                     # Wysyłamy biały obraz (lub można użyć np. ostatniego poprawnego stick figure)
                     white_canvas = np.ones((self.height, self.width, 3), dtype=np.uint8) * 255
@@ -310,21 +354,22 @@ class StickFigureWebcam:
                     self._handle_keys()
                     continue
 
-                # 3. Analiza postawy
+                # 4. Analiza postawy
                 posture_data = self.posture_analyzer.analyze_posture(
                     pose_data["landmarks"],
                     pose_data["frame_height"],
                     pose_data["frame_width"]
                 )
 
-                # 4. Renderowanie stick figure
+                # 5. Renderowanie stick figure (przekazujemy również dane twarzy)
                 stick_figure = self.stick_figure_renderer.render(
                     pose_data["landmarks"],
                     posture_data["is_sitting"],
-                    posture_data["confidence"]
+                    posture_data["confidence"],
+                    face_data  # Nowy parametr - dane twarzy
                 )
 
-                # 5. Wysyłanie obrazu do wirtualnej kamery
+                # 6. Wysyłanie obrazu do wirtualnej kamery
                 if virtual_camera_working:
                     sent = self.virtual_camera.send_frame(stick_figure)
                     if not sent:
@@ -345,11 +390,11 @@ class StickFigureWebcam:
                                     log_type="VIRTUAL_CAM"
                                 )
 
-                # 6. Wyświetlanie podglądu
+                # 7. Wyświetlanie podglądu
                 if self.show_preview:
-                    self._show_preview(frame, pose_data, stick_figure)
+                    self._show_preview(frame, pose_data, stick_figure, face_data)
 
-                # 7. Obsługa klawiszy
+                # 8. Obsługa klawiszy
                 self._handle_keys()
 
                 # Pomiar wydajności
@@ -388,7 +433,8 @@ class StickFigureWebcam:
         self,
         original_frame: np.ndarray,
         pose_data: Optional[Dict[str, Any]],
-        stick_figure: Optional[np.ndarray]
+        stick_figure: Optional[np.ndarray],
+        face_data: Optional[Dict[str, Any]]  # Nowy parametr
     ) -> None:
         """
         Wyświetla podgląd obrazów w trybie debug.
@@ -397,6 +443,7 @@ class StickFigureWebcam:
             original_frame (np.ndarray): Oryginalny obraz z kamery
             pose_data (Optional[Dict[str, Any]]): Dane wykrytej pozy lub None
             stick_figure (Optional[np.ndarray]): Wygenerowany stick figure lub None
+            face_data (Optional[Dict[str, Any]]): Dane wykrytej twarzy lub None
         """
         if not self.show_preview:
             return
@@ -425,6 +472,33 @@ class StickFigureWebcam:
                     (0, 255, 0),
                     2
                 )
+
+            # Jeśli mamy dane twarzy, wizualizujemy punkty charakterystyczne twarzy (nowy kod)
+            if face_data is not None and "has_face" in face_data and face_data["has_face"]:
+                if "multi_face_landmarks" in face_data and face_data["multi_face_landmarks"] is not None:
+                    # Rysujemy uproszczoną siatkę twarzy
+                    # Używamy tylko kontury, aby nie zaciemniać obrazu
+                    preview = self.face_detector.draw_face_mesh(
+                        preview,
+                        face_data["multi_face_landmarks"],
+                        draw_tesselation=False,  # Nie rysuj pełnej siatki
+                        draw_contours=True,  # Rysuj kontury (oczy, usta)
+                        draw_irises=True  # Rysuj tęczówki (jeśli dostępne)
+                    )
+
+                    # Dodajemy informacje o wyrażeniach twarzy
+                    if "expressions" in face_data:
+                        exp = face_data["expressions"]
+                        exp_text = f"Usmiech: {exp.get('smile', 0):.2f} Usta: {exp.get('mouth_open', 0):.2f}"
+                        cv2.putText(
+                            preview,
+                            exp_text,
+                            (10, 60),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (0, 255, 0),
+                            1
+                        )
 
             # Wyświetlamy FPS
             cv2.putText(
@@ -472,6 +546,18 @@ class StickFigureWebcam:
                     1
                 )
 
+            # Wyświetlamy status FaceMesh (nowy kod)
+            face_mesh_status = f"FaceMesh: {'ON' if self.use_face_mesh else 'OFF'} (klawisz 'm')"
+            cv2.putText(
+                preview,
+                face_mesh_status,
+                (10, self.height - 70),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0) if self.use_face_mesh else (0, 0, 255),
+                1
+            )
+
             # Status pauzy - POPRAWKA: Używamy ASCII zamiast polskich znaków
             if self.paused:
                 # POPRAWKA: Usunięto polskie znaki, które powodowały problemy z wyświetlaniem
@@ -487,11 +573,11 @@ class StickFigureWebcam:
                 )
 
             # Klawisze sterujące
-            controls_text = "Controls: q/ESC=exit, p=pause, r=reset vcam, t=test pattern, d=debug, l=lighting"
+            controls_text = "Controls: q/ESC=exit, p=pause, r=reset vcam, t=test, d=debug, l=lighting, m=facemesh"
             cv2.putText(
                 preview,
                 controls_text,
-                (10, self.height - 70),
+                (10, self.height - 90),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.4,
                 (255, 255, 255),
@@ -630,6 +716,65 @@ class StickFigureWebcam:
                     figure_color=(0, 0, 0)  # Czarny kontur
                 )
 
+        elif key == ord('m'):  # m - przełączanie FaceMesh (nowy kod)
+            # Przełączamy stan FaceMesh
+            self.use_face_mesh = not self.use_face_mesh
+
+            if hasattr(self, 'stick_figure_renderer'):
+                # Aktualizujemy ustawienie w rendererze
+                self.stick_figure_renderer.set_use_face_mesh(self.use_face_mesh)
+
+            self.logger.info(
+                "Main",
+                f"FaceMesh {'włączony' if self.use_face_mesh else 'wyłączony'} (klawisz m)",
+                log_type="FACE"
+            )
+
+            # Jeśli włączamy FaceMesh, a detektor nie jest zainicjowany, tworzymy go
+            if self.use_face_mesh and (not hasattr(self, 'face_detector') or self.face_detector is None):
+                self.logger.info("Main", "Inicjalizacja detektora twarzy FaceMesh", log_type="FACE")
+                self.face_detector = FaceMeshDetector(
+                    max_num_faces=1,
+                    min_detection_confidence=0.6,
+                    min_tracking_confidence=0.6,
+                    refine_landmarks=True,
+                    logger=self.logger
+                )
+
+        elif key == ord('1'):  # 1 - niski poziom szczegółowości twarzy
+            if hasattr(self, 'stick_figure_renderer'):
+                self.stick_figure_renderer.set_face_detail_level("low")
+                self.logger.info("Main", "Ustawiono niski poziom szczegółowości twarzy (klawisz 1)", log_type="FACE")
+
+        elif key == ord('2'):  # 2 - średni poziom szczegółowości twarzy
+            if hasattr(self, 'stick_figure_renderer'):
+                self.stick_figure_renderer.set_face_detail_level("medium")
+                self.logger.info("Main", "Ustawiono średni poziom szczegółowości twarzy (klawisz 2)", log_type="FACE")
+
+        elif key == ord('3'):  # 3 - wysoki poziom szczegółowości twarzy
+            if hasattr(self, 'stick_figure_renderer'):
+                self.stick_figure_renderer.set_face_detail_level("high")
+                self.logger.info("Main", "Ustawiono wysoki poziom szczegółowości twarzy (klawisz 3)", log_type="FACE")
+
+        elif ord('4') <= key <= ord('8'):  # Klawisze 4-8 - różne wyrazy twarzy
+            # Mapowanie klawiszy na nastroje
+            moods = {
+                ord('4'): "happy",  # 4 - szczęśliwy
+                ord('5'): "sad",  # 5 - smutny
+                ord('6'): "surprised",  # 6 - zaskoczony
+                ord('7'): "neutral",  # 7 - neutralny
+                ord('8'): "wink"  # 8 - mrugnięcie
+            }
+
+            if hasattr(self, 'stick_figure_renderer'):
+                mood = moods.get(key)
+                self.stick_figure_renderer.set_mood(mood)
+                self.logger.info(
+                    "Main",
+                    f"Ustawiono nastrój twarzy: {mood} (klawisz {chr(key)})",
+                    log_type="FACE"
+                )
+
     def _cleanup(self) -> None:
         """
         Zwalnia zasoby i zamyka połączenia przed zakończeniem aplikacji.
@@ -651,6 +796,10 @@ class StickFigureWebcam:
             # Zamykanie detektora pozy
             if hasattr(self, 'pose_detector'):
                 self.pose_detector.close()
+
+            # Zamykanie detektora twarzy (nowy kod)
+            if hasattr(self, 'face_detector') and self.face_detector is not None:
+                self.face_detector.close()
 
             # Resetowanie managera adaptacyjnego oświetlenia
             if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
@@ -696,11 +845,17 @@ def parse_arguments():
                         help="Wyłącza automatyczne odbicie poziome obrazu")
     parser.add_argument("--skip-checks", action="store_true",
                         help="Pomija sprawdzanie wymagań systemowych")
-    # Dodane argumenty dla adaptacyjnego oświetlenia
+    # Parametry dla adaptacyjnego oświetlenia
     parser.add_argument("--adaptive-lighting", action="store_true",
                         help="Włącza adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia")
     parser.add_argument("--adaptation-speed", type=float, default=0.01,
                         help="Szybkość adaptacji kolorów (0.001-0.1, domyślnie 0.01)")
+    # Nowe parametry dla FaceMesh
+    parser.add_argument("--no-face-mesh", action="store_true",
+                        help="Wyłącza detekcję twarzy z MediaPipe FaceMesh")
+    parser.add_argument("--face-detail", type=str, default="medium",
+                        choices=["low", "medium", "high"],
+                        help="Poziom szczegółowości twarzy (low, medium, high)")
 
     return parser.parse_args()
 
@@ -753,7 +908,7 @@ def main():
         logger = logging.getLogger("fallback")
         logger.error(f"Nie można zainicjalizować CustomLogger: {e}")
 
-    logger.info("Main", "Uruchamianie Stick Figure Webcam", log_type="CONFIG")
+    logger.info("Main", "Uruchamianie Stick Figure Webcam z obsługą Face Mesh", log_type="CONFIG")
 
     # Sprawdzenie wymagań systemowych
     if not args.skip_checks:
@@ -788,6 +943,10 @@ def main():
 
     # Tworzenie i uruchamianie aplikacji
     try:
+        # Konfiguracja aplikacji z uwzględnieniem FaceMesh
+        use_face_mesh = not args.no_face_mesh
+        face_detail_level = args.face_detail
+
         app = StickFigureWebcam(
             camera_id=args.camera,
             width=args.width,
@@ -800,7 +959,9 @@ def main():
             flip_camera=not args.no_flip,
             adaptive_lighting=args.adaptive_lighting,
             adaptation_speed=args.adaptation_speed,
-            logger=logger  # Przekazujemy już utworzony logger
+            use_face_mesh=use_face_mesh,
+            face_detail_level=face_detail_level,
+            logger=logger
         )
 
         app.run()

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# src/drawing/stick_figure.py
+# src/drawing/stick_figure_renderer_updated.py
+# Zaktualizowana wersja StickFigureRenderer z integracją FaceMesh
 
 from typing import List, Tuple, Optional, Dict, Any
 
 import cv2
 import numpy as np
+from src.drawing.stick_figure_face_integration import StickFigureFaceIntegration
 
 from src.pose.pose_detector import PoseDetector
 from src.utils.custom_logger import CustomLogger
@@ -14,13 +16,9 @@ from src.utils.performance import PerformanceMonitor
 
 class StickFigureRenderer:
     """
-    Klasa do renderowania prostej postaci stick figure (ludzika z kresek)
+    Zaktualizowana klasa do renderowania postaci stick figure (ludzika z kresek)
     na podstawie punktów charakterystycznych wykrytych przez PoseDetector.
-
-    Implementuje bardzo czytelny i uproszczony model stick figure:
-    - Okrągła głowa z prostą mimiką (oczy i uśmiech)
-    - Prosta linia reprezentująca tułów
-    - Ręce i nogi jako proste linie bez zbędnych detali
+    Zawiera integrację z FaceMesh dla bardziej ekspresyjnych twarzy.
     """
 
     def __init__(
@@ -34,6 +32,8 @@ class StickFigureRenderer:
         chair_color: Tuple[int, int, int] = (150, 75, 0),  # Brązowe krzesło
         smooth_factor: float = 0.3,  # Współczynnik wygładzania ruchu
         smoothing_history: int = 3,  # Liczba klatek do wygładzania
+        use_face_mesh: bool = True,  # Czy używać integracji z FaceMesh
+        face_detail_level: str = "medium",  # Poziom szczegółowości twarzy
         logger: Optional[CustomLogger] = None
     ):
         """
@@ -49,6 +49,8 @@ class StickFigureRenderer:
             chair_color (Tuple[int, int, int]): Kolor krzesła (BGR)
             smooth_factor (float): Współczynnik wygładzania ruchu (0.0-1.0)
             smoothing_history (int): Liczba poprzednich klatek do wygładzania pozycji
+            use_face_mesh (bool): Czy używać integracji z FaceMesh
+            face_detail_level (str): Poziom szczegółowości twarzy ("low", "medium", "high")
             logger (CustomLogger, optional): Logger do zapisywania komunikatów
         """
         self.logger = logger or CustomLogger()
@@ -63,6 +65,7 @@ class StickFigureRenderer:
         self.figure_color = figure_color
         self.chair_color = chair_color
         self.smooth_factor = smooth_factor
+        self.use_face_mesh = use_face_mesh
 
         # Obliczanie promienia głowy
         self.head_radius = int(head_radius_factor * canvas_height)
@@ -73,6 +76,18 @@ class StickFigureRenderer:
 
         # Pamięć ostatnich poprawnych pozycji (do uzupełniania brakujących danych)
         self.last_valid_positions: Dict[int, Tuple[float, float, float, float]] = {}
+
+        # Inicjalizacja integratora twarzy FaceMesh
+        self.face_integration = StickFigureFaceIntegration(
+            feature_color=figure_color,
+            detail_level=face_detail_level,
+            smooth_factor=smooth_factor,
+            use_face_mesh=use_face_mesh,
+            logger=logger
+        )
+
+        # Zmienna śledząca stan
+        self.mood = "happy"  # Default mood: happy, sad, neutral
 
         # Stałe - indeksy punktów z PoseDetector
         self.NOSE = PoseDetector.NOSE
@@ -91,12 +106,9 @@ class StickFigureRenderer:
         self.LEFT_ANKLE = PoseDetector.LEFT_ANKLE
         self.RIGHT_ANKLE = PoseDetector.RIGHT_ANKLE
 
-        # Zmienna śledząca stan
-        self.mood = "happy"  # Default mood: happy, sad, neutral
-
         self.logger.info(
             "StickFigureRenderer",
-            f"Renderer stick figure zainicjalizowany ({canvas_width}x{canvas_height})",
+            f"Renderer stick figure zainicjalizowany ({canvas_width}x{canvas_height}, use_face_mesh={use_face_mesh})",
             log_type="DRAWING"
         )
 
@@ -104,7 +116,8 @@ class StickFigureRenderer:
         self,
         landmarks: List[Tuple[float, float, float, float]],
         is_sitting: bool,
-        confidence: float = 0.0
+        confidence: float = 0.0,
+        face_data: Optional[Dict[str, Any]] = None
     ) -> np.ndarray:
         """
         Renderuje stick figure na podstawie punktów charakterystycznych.
@@ -113,6 +126,8 @@ class StickFigureRenderer:
             landmarks (List[Tuple[float, float, float, float]]): Lista punktów (x, y, z, visibility)
             is_sitting (bool): Czy osoba siedzi
             confidence (float): Pewność detekcji pozy (0.0-1.0)
+            face_data (Optional[Dict[str, Any]]): Dane twarzy z FaceMeshDetector
+                                               lub None, jeśli dane nie są dostępne
 
         Returns:
             np.ndarray: Obraz z narysowanym stick figure
@@ -137,10 +152,21 @@ class StickFigureRenderer:
             canvas[:] = self.bg_color
 
             # Rysowanie stick figure w zależności od postawy
+            head_position = None
             if is_sitting:
-                self._draw_sitting_figure(canvas, smooth_landmarks)
+                head_position = self._draw_sitting_figure(canvas, smooth_landmarks)
             else:
-                self._draw_standing_figure(canvas, smooth_landmarks)
+                head_position = self._draw_standing_figure(canvas, smooth_landmarks)
+
+            # Jeśli mamy pozycję głowy i włączoną integrację z FaceMesh
+            if head_position is not None and self.use_face_mesh:
+                # Integruj bardziej szczegółową twarz z FaceMesh
+                canvas = self.face_integration.integrate_face(
+                    canvas,
+                    head_position,
+                    self.head_radius,
+                    face_data
+                )
 
             self.performance.stop_timer()
             return canvas
@@ -233,16 +259,20 @@ class StickFigureRenderer:
         self,
         canvas: np.ndarray,
         landmarks: List[Tuple[float, float, float, float]]
-    ) -> None:
+    ) -> Optional[Tuple[int, int]]:
         """
         Rysuje stick figure w pozycji stojącej.
 
         Args:
             canvas (np.ndarray): Płótno do rysowania
             landmarks (List[Tuple[float, float, float, float]]): Lista punktów
+
+        Returns:
+            Optional[Tuple[int, int]]: Pozycja środka głowy lub None, jeśli nie udało się narysować
         """
         h, w, _ = canvas.shape
         points = {}
+        head_position = None
 
         # Konwersja punktów na współrzędne pixeli
         for i, (x, y, _, _) in enumerate(landmarks):
@@ -302,11 +332,26 @@ class StickFigureRenderer:
             # 4. Rysujemy głowę
             if self.NOSE in points:
                 head_pos = points[self.NOSE]
-                self._draw_simple_head(canvas, head_pos)
+                head_position = head_pos  # Zapisujemy pozycję głowy
+
+                # Jeśli nie używamy FaceMesh, rysujemy prostą głowę
+                if not self.use_face_mesh:
+                    self._draw_simple_head(canvas, head_pos)
+                else:
+                    # Rysujemy tylko okrąg głowy (detale będą dodane przez FaceIntegration)
+                    cv2.circle(canvas, head_pos, self.head_radius, self.figure_color, self.line_thickness)
+
             elif shoulder_center:
                 # Jeśli brak nosa, używamy pozycji nad barkami
                 head_pos = (shoulder_center[0], shoulder_center[1] - self.head_radius - 10)
-                self._draw_simple_head(canvas, head_pos)
+                head_position = head_pos  # Zapisujemy pozycję głowy
+
+                # Jeśli nie używamy FaceMesh, rysujemy prostą głowę
+                if not self.use_face_mesh:
+                    self._draw_simple_head(canvas, head_pos)
+                else:
+                    # Rysujemy tylko okrąg głowy (detale będą dodane przez FaceIntegration)
+                    cv2.circle(canvas, head_pos, self.head_radius, self.figure_color, self.line_thickness)
 
         except Exception as e:
             self.logger.error(
@@ -315,20 +360,26 @@ class StickFigureRenderer:
                 log_type="DRAWING"
             )
 
+        return head_position
+
     def _draw_sitting_figure(
         self,
         canvas: np.ndarray,
         landmarks: List[Tuple[float, float, float, float]]
-    ) -> None:
+    ) -> Optional[Tuple[int, int]]:
         """
         Rysuje stick figure w pozycji siedzącej wraz z krzesłem.
 
         Args:
             canvas (np.ndarray): Płótno do rysowania
             landmarks (List[Tuple[float, float, float, float]]): Lista punktów
+
+        Returns:
+            Optional[Tuple[int, int]]: Pozycja środka głowy lub None, jeśli nie udało się narysować
         """
         h, w, _ = canvas.shape
         points = {}
+        head_position = None
 
         # Konwersja punktów na współrzędne pixeli
         for i, (x, y, _, _) in enumerate(landmarks):
@@ -413,11 +464,26 @@ class StickFigureRenderer:
             # 6. Rysujemy głowę
             if self.NOSE in points:
                 head_pos = points[self.NOSE]
-                self._draw_simple_head(canvas, head_pos)
+                head_position = head_pos  # Zapisujemy pozycję głowy
+
+                # Jeśli nie używamy FaceMesh, rysujemy prostą głowę
+                if not self.use_face_mesh:
+                    self._draw_simple_head(canvas, head_pos)
+                else:
+                    # Rysujemy tylko okrąg głowy (detale będą dodane przez FaceIntegration)
+                    cv2.circle(canvas, head_pos, self.head_radius, self.figure_color, self.line_thickness)
+
             elif shoulder_center:
                 # Jeśli brak nosa, używamy pozycji nad barkami
                 head_pos = (shoulder_center[0], shoulder_center[1] - self.head_radius - 10)
-                self._draw_simple_head(canvas, head_pos)
+                head_position = head_pos  # Zapisujemy pozycję głowy
+
+                # Jeśli nie używamy FaceMesh, rysujemy prostą głowę
+                if not self.use_face_mesh:
+                    self._draw_simple_head(canvas, head_pos)
+                else:
+                    # Rysujemy tylko okrąg głowy (detale będą dodane przez FaceIntegration)
+                    cv2.circle(canvas, head_pos, self.head_radius, self.figure_color, self.line_thickness)
 
         except Exception as e:
             self.logger.error(
@@ -425,6 +491,8 @@ class StickFigureRenderer:
                 f"Błąd podczas rysowania postaci siedzącej: {str(e)}",
                 log_type="DRAWING"
             )
+
+        return head_position
 
     def _draw_simple_head(self, canvas: np.ndarray, position: Tuple[int, int]) -> None:
         """
@@ -609,6 +677,9 @@ class StickFigureRenderer:
 
         if figure_color is not None:
             self.figure_color = figure_color
+            # Aktualizujemy też kolor w integratorze twarzy
+            if hasattr(self, 'face_integration'):
+                self.face_integration.face_renderer.feature_color = figure_color
 
         if chair_color is not None:
             self.chair_color = chair_color
@@ -624,16 +695,20 @@ class StickFigureRenderer:
         Ustawia nastrój stick figure, który wpływa na mimikę twarzy.
 
         Args:
-            mood (str): Nastrój: "happy", "sad" lub "neutral"
+            mood (str): Nastrój: "happy", "sad", "neutral", "surprised", "wink"
         """
-        valid_moods = ["happy", "sad", "neutral"]
+        valid_moods = ["happy", "sad", "neutral", "surprised", "wink"]
         if mood in valid_moods:
             self.mood = mood
-            self.logger.debug(
-                "StickFigureRenderer",
-                f"Ustawiono nastrój stick figure: {mood}",
-                log_type="DRAWING"
-            )
+
+            # Jeśli używamy FaceMesh, nadpisujemy twarz z określonym nastrojem
+            if self.use_face_mesh and hasattr(self, 'face_integration'):
+                # Faktyczne nadpisanie nastąpi podczas renderowania
+                self.logger.debug(
+                    "StickFigureRenderer",
+                    f"Ustawiono nastrój stick figure: {mood}",
+                    log_type="DRAWING"
+                )
         else:
             self.logger.warning(
                 "StickFigureRenderer",
@@ -670,11 +745,58 @@ class StickFigureRenderer:
         if len(self.landmark_history) > self.smoothing_history:
             self.landmark_history = self.landmark_history[-self.smoothing_history:]
 
+        # Aktualizacja smooth_factor w integratorze twarzy
+        if hasattr(self, 'face_integration'):
+            self.face_integration.smooth_factor = self.smooth_factor
+
         self.logger.debug(
             "StickFigureRenderer",
             f"Zaktualizowano parametry wygładzania (factor={self.smooth_factor}, history={self.smoothing_history})",
             log_type="DRAWING"
         )
+
+    def set_use_face_mesh(self, use_face_mesh: bool) -> None:
+        """
+        Włącza lub wyłącza używanie danych z FaceMesh.
+
+        Args:
+            use_face_mesh (bool): Czy używać danych z FaceMesh
+        """
+        self.use_face_mesh = use_face_mesh
+
+        # Aktualizacja w integratorze twarzy
+        if hasattr(self, 'face_integration'):
+            self.face_integration.set_use_face_mesh(use_face_mesh)
+
+        self.logger.info(
+            "StickFigureRenderer",
+            f"Zmieniono użycie FaceMesh na: {use_face_mesh}",
+            log_type="DRAWING"
+        )
+
+    def set_face_detail_level(self, detail_level: str) -> None:
+        """
+        Zmienia poziom szczegółowości renderowania twarzy.
+
+        Args:
+            detail_level (str): Poziom szczegółowości ("low", "medium", "high")
+        """
+        if detail_level in ["low", "medium", "high"]:
+            # Aktualizacja w integratorze twarzy
+            if hasattr(self, 'face_integration'):
+                self.face_integration.set_detail_level(detail_level)
+
+            self.logger.info(
+                "StickFigureRenderer",
+                f"Zmieniono poziom szczegółowości twarzy na {detail_level}",
+                log_type="DRAWING"
+            )
+        else:
+            self.logger.warning(
+                "StickFigureRenderer",
+                f"Nieprawidłowy poziom szczegółowości: {detail_level}. Dozwolone wartości: low, medium, high",
+                log_type="DRAWING"
+            )
 
     def resize(self, width: int, height: int) -> None:
         """
@@ -700,6 +822,33 @@ class StickFigureRenderer:
         self.landmark_history = []
         self.last_valid_positions = {}
 
+    def force_expression(
+        self,
+        canvas: np.ndarray,
+        head_position: Tuple[int, int],
+        mood: str = "happy"
+    ) -> np.ndarray:
+        """
+        Wymusza określony wyraz twarzy niezależnie od danych FaceMesh.
+
+        Args:
+            canvas (np.ndarray): Płótno z narysowaną postacią
+            head_position (Tuple[int, int]): Pozycja środka głowy (x, y)
+            mood (str): Nastrój do wyrażenia ("happy", "sad", "surprised", "neutral", "wink")
+
+        Returns:
+            np.ndarray: Płótno z nałożonym wyrazem twarzy
+        """
+        if not self.use_face_mesh or not hasattr(self, 'face_integration'):
+            return canvas
+
+        return self.face_integration.override_face(
+            canvas,
+            head_position,
+            self.head_radius,
+            mood
+        )
+
     def reset(self) -> None:
         """
         Resetuje wewnętrzny stan renderera.
@@ -707,4 +856,9 @@ class StickFigureRenderer:
         self.landmark_history = []
         self.last_valid_positions = {}
         self.mood = "happy"  # Przywrócenie domyślnego nastroju
+
+        # Reset integratora twarzy
+        if hasattr(self, 'face_integration'):
+            self.face_integration.reset()
+
         self.logger.debug("StickFigureRenderer", "Reset wewnętrznego stanu renderera", log_type="DRAWING")
