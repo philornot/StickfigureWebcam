@@ -45,6 +45,15 @@ class FaceMeshDetector:
     LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
     LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
 
+    # Dodatkowe punkty ust pomocne przy detekcji uśmiechu
+    # Górna warga (środek)
+    UPPER_LIP_CENTER = 13
+    # Dolna warga (środek)
+    LOWER_LIP_CENTER = 14
+    # Kąciki ust
+    LEFT_MOUTH_CORNER = 61
+    RIGHT_MOUTH_CORNER = 291
+
     # Nos
     NOSE_TIP = 1
     NOSE_BOTTOM = 2
@@ -162,7 +171,8 @@ class FaceMeshDetector:
                     "right_eye_open": 1.0,
                     "eyebrow_raised": 0.0,
                     "surprise": 0.0
-                }
+                },
+                "debug_info": {}  # Dodane pole do debugowania
             }
 
             # Sprawdzenie czy twarz została wykryta
@@ -271,6 +281,8 @@ class FaceMeshDetector:
         """
         Analizuje wyraz twarzy na podstawie punktów charakterystycznych.
 
+        Ulepszono detekcję uśmiechu przez analizę kształtu ust i położenia kącików.
+
         Args:
             landmarks (List[Tuple[float, float, float, float]]): Lista punktów charakterystycznych
             img_width (int): Szerokość obrazu
@@ -288,14 +300,17 @@ class FaceMeshDetector:
             "surprise": 0.0
         }
 
+        # Słownik z wartościami debug dla analizy
+        debug_values = {}
+
         try:
             if not landmarks or len(landmarks) < 468:  # FaceMesh ma 468 punktów
                 return expressions
 
             # Analiza otwarcia ust
             # Używamy punktów górnej i dolnej wargi do określenia otwarcia ust
-            top_lip = landmarks[13]  # Górna warga, środek
-            bottom_lip = landmarks[14]  # Dolna warga, środek
+            top_lip = landmarks[self.UPPER_LIP_CENTER]  # Górna warga, środek
+            bottom_lip = landmarks[self.LOWER_LIP_CENTER]  # Dolna warga, środek
 
             # Obliczamy odległość między wargami w pikselach
             lips_distance = abs(top_lip[1] - bottom_lip[1]) * img_height
@@ -306,22 +321,58 @@ class FaceMeshDetector:
                 # Przeliczamy na wartość 0.0-1.0, gdzie 0.0 to zamknięte usta, 1.0 to szeroko otwarte
                 mouth_open_ratio = min(1.0, (lips_distance / face_height) * 5.0)
                 expressions["mouth_open"] = mouth_open_ratio
+                debug_values["lips_distance"] = lips_distance
+                debug_values["face_height"] = face_height
+                debug_values["mouth_open_ratio_raw"] = lips_distance / face_height
 
-            # Analiza uśmiechu
-            # Używamy punktów kącików ust do określenia uśmiechu
-            left_mouth_corner = landmarks[61]  # Lewy kącik ust
-            right_mouth_corner = landmarks[291]  # Prawy kącik ust
-            center_lip = landmarks[13]  # Środek górnej wargi
+            # ===== ULEPSZONY ALGORYTM ANALIZY UŚMIECHU =====
+            # 1. Obliczamy różnicę wysokości między kącikami ust a środkiem górnej wargi
+            left_mouth_corner = landmarks[self.LEFT_MOUTH_CORNER]  # Lewy kącik ust
+            right_mouth_corner = landmarks[self.RIGHT_MOUTH_CORNER]  # Prawy kącik ust
+            center_upper_lip = landmarks[self.UPPER_LIP_CENTER]  # Środek górnej wargi
 
-            # Obliczamy różnicę wysokości między kącikami a środkiem ust
-            left_corner_height = left_mouth_corner[1]
-            right_corner_height = right_mouth_corner[1]
-            center_height = center_lip[1]
+            # Przechowujemy współrzędne Y (gdzie mniejsze Y jest wyżej na ekranie)
+            left_corner_y = left_mouth_corner[1]
+            right_corner_y = right_mouth_corner[1]
+            center_upper_y = center_upper_lip[1]
 
-            # Jeśli kąciki są wyżej niż środek, to mamy uśmiech
-            corner_diff = (center_height - left_corner_height) + (center_height - right_corner_height)
-            smile_ratio = max(0.0, min(1.0, corner_diff * 2.0))
+            # 2. Kluczowa modyfikacja: Obliczamy krzywość ust
+            # Obliczamy o ile kąciki ust są wyżej od środka górnej wargi
+            # Przy uśmiechu kąciki będą wyżej (mniejsze Y) niż środek
+            left_up_diff = center_upper_y - left_corner_y
+            right_up_diff = center_upper_y - right_corner_y
+
+            # Uśmiech jest symetryczny, więc oba kąciki powinny być uniesione
+            corner_diff = (left_up_diff + right_up_diff) / 2.0
+
+            # Wartości dodatnie oznaczają, że kąciki są wyżej niż środek - to uśmiech
+            # Normalizacja i ograniczenie do zakresu 0.0-1.0
+            # Mnożymy przez 4.0 zamiast 2.0 dla zwiększenia czułości
+            smile_ratio = max(0.0, min(1.0, corner_diff * 4.0))
+
+            # 3. Dodatkowy czynnik: badamy szerokość ust
+            # Przy uśmiechu usta są szersze
+            mouth_width = abs(left_mouth_corner[0] - right_mouth_corner[0]) * img_width
+
+            # Normalizujemy względem szerokości twarzy
+            face_width = abs(landmarks[234][0] - landmarks[454][0]) * img_width
+            if face_width > 0:
+                width_ratio = min(1.0, (mouth_width / face_width) * 2.0)
+                # Uwzględniamy szerokość jako dodatkowy czynnik (z mniejszą wagą)
+                smile_ratio = smile_ratio * 0.8 + width_ratio * 0.2
+
+            # Zapisujemy ostateczną wartość
             expressions["smile"] = smile_ratio
+
+            # Zapisujemy wartości debug do analizy
+            debug_values["left_corner_y"] = left_corner_y
+            debug_values["right_corner_y"] = right_corner_y
+            debug_values["center_upper_y"] = center_upper_y
+            debug_values["corner_diff"] = corner_diff
+            debug_values["mouth_width"] = mouth_width
+            debug_values["face_width"] = face_width
+            debug_values["width_ratio"] = width_ratio if 'width_ratio' in locals() else None
+            debug_values["smile_ratio_final"] = smile_ratio
 
             # Analiza otwarcia oczu
             # Używamy punktów górnej i dolnej powieki do określenia otwarcia oka
@@ -367,6 +418,15 @@ class FaceMeshDetector:
             surprise_score = (expressions["mouth_open"] + expressions["eyebrow_raised"] +
                               (expressions["left_eye_open"] + expressions["right_eye_open"]) / 2) / 3
             expressions["surprise"] = min(1.0, surprise_score)
+
+            # Dodajemy debugowanie - co 100 klatek logujemy wartości uśmiechu
+            if self.frame_count % 100 == 0:
+                self.logger.debug(
+                    "FaceMeshDetector",
+                    f"Analiza uśmiechu: wartość={expressions['smile']:.2f}, "
+                    f"diff_lewy={left_up_diff:.4f}, diff_prawy={right_up_diff:.4f}",
+                    log_type="FACE"
+                )
 
         except Exception as e:
             self.logger.error(

@@ -48,6 +48,9 @@ class FaceRenderer:
         self.smooth_factor = smooth_factor
         self.detail_level = detail_level
 
+        # Dodajemy licznik ramek do debugowania
+        self.frame_count = 0
+
         # Domyślna skala elementów twarzy względem promienia głowy
         self.eye_scale = 0.2  # Oczy mają rozmiar ~20% promienia głowy
         self.mouth_scale = 0.5  # Usta mają szerokość ~50% promienia głowy
@@ -180,6 +183,7 @@ class FaceRenderer:
             np.ndarray: Płótno z narysowaną twarzą
         """
         self.performance.start_timer()
+        self.frame_count += 1
 
         if not face_data or "has_face" not in face_data or not face_data["has_face"]:
             # Jeśli nie ma danych twarzy, rysujemy prostą uśmiechniętą buźkę
@@ -195,6 +199,14 @@ class FaceRenderer:
 
         # Zapisz wyrazy do użycia w przyszłych klatkach
         self.last_expressions = smoothed_expressions
+
+        # Logowanie informacji debugujących co 60 klatek
+        if self.frame_count % 60 == 0:
+            self.logger.debug(
+                "FaceRenderer",
+                f"Renderowanie uśmiechu - wartość: {smoothed_expressions['smile']:.2f}",
+                log_type="DRAWING"
+            )
 
         try:
             # Narysuj głowę (okrąg)
@@ -339,14 +351,23 @@ class FaceRenderer:
                 2
             )
 
+        # ===== POPRAWIONY ALGORYTM RENDEROWANIA UST =====
         # Rysuj usta z uwzględnieniem uśmiechu i otwarcia
         mouth_y = cy + int(self.head_radius * 0.2)
         mouth_width = int(self.head_radius * 0.6)
         mouth_height = int(self.head_radius * 0.3)
 
-        # Wartości wyrazów twarzy
+        # Pobieramy wartości wyrazów twarzy
         mouth_open = expressions.get("mouth_open", 0.0)
         smile = expressions.get("smile", 0.0)
+
+        # Logujemy informacje dla potrzeb debugowania co 100 klatek
+        if self.frame_count % 100 == 0:
+            self.logger.debug(
+                "FaceRenderer",
+                f"_draw_simple_face_with_expressions: smile={smile:.2f}, mouth_open={mouth_open:.2f}",
+                log_type="DRAWING"
+            )
 
         if mouth_open > 0.2:
             # Otwarte usta - elipsa
@@ -361,19 +382,29 @@ class FaceRenderer:
                 2  # grubość
             )
         else:
+            # ===== KLUCZOWA ZMIANA: Zmieniono progi uśmiechu =====
             # Zamknięte usta - łuk (uśmiech)
             # Modyfikacja kształtu ust w zależności od uśmiechu
             start_angle = 0
             end_angle = 180
 
-            if smile > 0.6:
+            # Nowe wartości progowe: 0.4 zamiast 0.6, 0.2 zamiast 0.3
+            if smile > 0.4:  # Wcześniej było 0.6
                 # Szeroki uśmiech
                 mouth_height = int(mouth_height * 1.5)
-            elif smile < 0.3:
+                # Dodatkowe podniesienie ust dla większego uśmiechu
+                mouth_y -= int(self.head_radius * 0.05)
+            elif smile < 0.2:  # Wcześniej było 0.3
                 # Neutralne lub smutne usta
                 start_angle = 180
                 end_angle = 360
                 mouth_y += mouth_height // 2
+
+            # Dodatkowe skalowanie wysokości ust w zależności od intensywności uśmiechu
+            if smile > 0.2 and smile <= 0.4:
+                # Interpolacja liniowa wysokości dla wartości smile między 0.2 a 0.4
+                smile_factor = (smile - 0.2) / 0.2  # Normalizacja do zakresu 0-1
+                mouth_height = int(mouth_height * (1.0 + smile_factor * 0.5))
 
             cv2.ellipse(
                 canvas,
@@ -401,6 +432,14 @@ class FaceRenderer:
         """
         # Środek głowy
         cx, cy = center
+
+        # Logujemy informacje dla potrzeb debugowania co 100 klatek
+        if self.frame_count % 100 == 0:
+            self.logger.debug(
+                "FaceRenderer",
+                f"_draw_detailed_face: expressions={expressions}",
+                log_type="DRAWING"
+            )
 
         # 1. Rysowanie oczu
         eye_offset_x = int(self.head_radius * 0.3)
@@ -526,6 +565,7 @@ class FaceRenderer:
                     1
                 )
 
+        # ===== POPRAWIONY ALGORYTM RENDEROWANIA UST =====
         # 4. Rysowanie ust
         mouth_y = cy + int(self.head_radius * 0.3)
         mouth_width = int(self.head_radius * 0.5)
@@ -534,6 +574,14 @@ class FaceRenderer:
         # Wartości ekspresji
         mouth_open = expressions.get("mouth_open", 0.0)
         smile = expressions.get("smile", 0.0)
+
+        # Logujemy informacje dla potrzeb debugowania co 100 klatek
+        if self.frame_count % 100 == 0:
+            self.logger.debug(
+                "FaceRenderer",
+                f"Renderowanie ust - smile: {smile:.2f}, mouth_open: {mouth_open:.2f}",
+                log_type="DRAWING"
+            )
 
         if self.draw_detailed_mouth:
             # Bardziej szczegółowe usta
@@ -581,27 +629,54 @@ class FaceRenderer:
                     -1  # wypełnione
                 )
             else:
+                # ===== KLUCZOWE ZMIANY: Zmienione progi uśmiechu oraz algorytm rysowania =====
                 # Zamknięte usta
-                # Główna linia ust
-                mouth_curve = int(mouth_height * (smile - 0.5) * 2)
+                # Główna linia ust z uśmiechem
+                # Zmieniono progi i dodano więcej przedziałów
 
-                if mouth_curve > 0:
-                    # Uśmiech - łuk w dół
+                # Dostosowanie krzywizny ust w zależności od wartości smile
+                if smile > 0.4:  # Wcześniej było 0.5
+                    # Wyraźny uśmiech - duża krzywizna do góry
+                    mouth_curve = int(mouth_height * 1.0)  # Zwiększono z 0.5 na 1.0
                     cv2.ellipse(
                         canvas,
                         (cx, mouth_y),
-                        (mouth_width, abs(mouth_curve)),
+                        (mouth_width, mouth_curve),
                         0, 0, 180,
                         self.feature_color,
                         2
                     )
-                else:
-                    # Neutralne/smutne - łuk w górę
+                elif smile > 0.2:  # Wcześniej było 0.0
+                    # Lekki uśmiech - mniejsza krzywizna do góry
+                    # Interpolacja liniowa krzywizny dla wartości smile między 0.2 a 0.4
+                    smile_factor = (smile - 0.2) / 0.2  # Normalizacja do zakresu 0-1
+                    mouth_curve = int(mouth_height * (0.3 + smile_factor * 0.7))
                     cv2.ellipse(
                         canvas,
-                        (cx, mouth_y + abs(mouth_curve)),
-                        (mouth_width, abs(mouth_curve)),
-                        0, 180, 360,
+                        (cx, mouth_y),
+                        (mouth_width, mouth_curve),
+                        0, 0, 180,
+                        self.feature_color,
+                        2
+                    )
+                elif smile < 0.15:  # Dodano nowy warunek dla smutnej twarzy
+                    # Smutek - krzywizna w dół
+                    mouth_curve = int(mouth_height * 0.6)
+                    cv2.ellipse(
+                        canvas,
+                        (cx, mouth_y + mouth_curve),
+                        (mouth_width, mouth_curve),
+                        0, 180, 360,  # Odwrócony łuk
+                        self.feature_color,
+                        2
+                    )
+                else:
+                    # Neutralny wyraz - prosty, lekko wygięty łuk
+                    cv2.ellipse(
+                        canvas,
+                        (cx, mouth_y),
+                        (mouth_width, int(mouth_height * 0.2)),
+                        0, 0, 180,
                         self.feature_color,
                         2
                     )
@@ -632,19 +707,32 @@ class FaceRenderer:
                         -1
                     )
             else:
+                # ===== KLUCZOWE ZMIANY: Nowe progi i skalowanie uśmiechu =====
                 # Zamknięte usta - łuk
+
                 # Modyfikacja kształtu ust w zależności od uśmiechu
                 start_angle = 0
                 end_angle = 180
 
-                if smile > 0.5:
-                    # Uśmiech - łuk w dół
-                    mouth_height = int(mouth_height * (0.8 + smile * 0.8))
-                elif smile < 0.4:
+                # Nowe progi i silniejsze reakcje
+                if smile > 0.4:  # Wcześniej 0.5
+                    # Uśmiech - łuk w dół z większą krzywizną
+                    smile_scale = 1.2 + (smile - 0.4) * 1.5  # Skala od 1.2 do 2.7
+                    mouth_height = int(mouth_height * smile_scale)
+                    # Dodajemy lekkie przesunięcie w górę dla większego uśmiechu
+                    mouth_y -= int(self.head_radius * 0.05 * (smile - 0.4) / 0.6)
+                elif smile > 0.2:  # Dodano przedział dla mniejszego uśmiechu
+                    # Lekki uśmiech - mniejsza krzywizna
+                    smile_scale = 0.8 + (smile - 0.2) * 2.0  # Skala od 0.8 do 1.2
+                    mouth_height = int(mouth_height * smile_scale)
+                elif smile < 0.15:  # Wcześniej 0.4
                     # Smutek - łuk w górę
                     start_angle = 180
                     end_angle = 360
                     mouth_y += mouth_height // 2
+                else:
+                    # Neutralny wyraz - prawie prosta linia
+                    mouth_height = int(mouth_height * 0.5)  # Zmniejszono wysokość
 
                 cv2.ellipse(
                     canvas,
@@ -668,5 +756,6 @@ class FaceRenderer:
             "eyebrow_raised": 0.0,
             "surprise": 0.0
         }
+        self.frame_count = 0
 
         self.logger.debug("FaceRenderer", "Reset wewnętrznego stanu renderera", log_type="DRAWING")
