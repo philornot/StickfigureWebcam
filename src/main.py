@@ -30,19 +30,19 @@ class StickFigureWebcam:
     """
 
     def __init__(
-            self,
-            camera_id: int = 0,
-            width: int = 640,
-            height: int = 480,
-            fps: int = 30,
-            debug: bool = False,
-            log_level: str = "INFO",
-            log_file: Optional[str] = None,
-            show_preview: bool = True,
-            flip_camera: bool = True,
-            adaptive_lighting: bool = False,
-            adaptation_speed: float = 0.01,
-            logger: Optional[CustomLogger] = None
+        self,
+        camera_id: int = 0,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 30,
+        debug: bool = False,
+        log_level: str = "INFO",
+        log_file: Optional[str] = None,
+        show_preview: bool = True,
+        flip_camera: bool = True,
+        adaptive_lighting: bool = False,  # Dodano parametr
+        adaptation_speed: float = 0.01,  # Dodano parametr szybkości adaptacji
+        logger: Optional[CustomLogger] = None
     ):
         """
         Inicjalizacja aplikacji Stick Figure Webcam.
@@ -57,7 +57,7 @@ class StickFigureWebcam:
             log_file (Optional[str]): Ścieżka do pliku logów (None dla logowania tylko do konsoli)
             show_preview (bool): Czy pokazywać podgląd obrazu
             flip_camera (bool): Czy odbijać obraz z kamery w poziomie
-            adaptive_lighting (bool): Czy włączyć adaptacyjne dostosowywanie kolorów
+            adaptive_lighting (bool): Czy włączyć adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia
             adaptation_speed (float): Szybkość adaptacji kolorów (0.001-0.1)
             logger (Optional[CustomLogger]): Opcjonalny logger (zamiast tworzenia nowego)
         """
@@ -226,24 +226,6 @@ class StickFigureWebcam:
                 if self.flip_camera:
                     frame = self.camera.flip_horizontal(frame)
 
-                # Analizuj jasność otoczenia i aktualizuj kolory
-                if self.adaptive_lighting and not self.paused:
-                    brightness = self.lighting_manager.analyze_frame(frame)
-                    bg_color, figure_color = self.lighting_manager.update_colors(brightness)
-                    self.stick_figure_renderer.set_colors(
-                        bg_color=bg_color,
-                        figure_color=figure_color
-                    )
-
-                    # Logowanie stanu co 100 klatek
-                    if self.frame_count % 100 == 0:
-                        colors = self.lighting_manager.get_current_colors()
-                        self.logger.debug(
-                            "AdaptiveLighting",
-                            f"Jasność otoczenia: {brightness:.2f}, jasność tła: {colors['brightness_level']:.2f}",
-                            log_type="LIGHTING"
-                        )
-
                 # Aktualizacja licznika FPS
                 self.frame_count += 1
                 self.fps_counter += 1
@@ -259,7 +241,46 @@ class StickFigureWebcam:
                         self.virtual_camera.send_test_pattern()
                     if self.show_preview:
                         self._show_preview(frame, None, None)
+
+                    # Dodajemy obsługę klawiszy w trybie pauzy
+                    # bez tego aplikacja nie reaguje na klawisze po wejściu w stan pauzy
+                    self._handle_keys()
+
+                    # Dodajemy krótkie opóźnienie, aby ograniczyć zużycie CPU w trybie pauzy
+                    time.sleep(0.05)
+
+                    # Przejście do następnej iteracji pętli
                     continue
+
+                # Analizuj jasność otoczenia i aktualizuj kolory jesli włączona funkcja adaptacyjnego oświetlenia
+                if self.adaptive_lighting and self.lighting_manager is not None:
+                    try:
+                        # Analiza jasności obrazu
+                        brightness = self.lighting_manager.analyze_frame(frame)
+
+                        # Aktualizacja kolorów na podstawie jasności
+                        bg_color, figure_color = self.lighting_manager.update_colors(brightness)
+
+                        # Ustawienie nowych kolorów dla renderera
+                        self.stick_figure_renderer.set_colors(
+                            bg_color=bg_color,
+                            figure_color=figure_color
+                        )
+
+                        # Logowanie stanu co 100 klatek
+                        if self.frame_count % 100 == 0:
+                            colors = self.lighting_manager.get_current_colors()
+                            self.logger.debug(
+                                "AdaptiveLighting",
+                                f"Jasność otoczenia: {brightness:.2f}, jasność tła: {colors['brightness_level']:.2f}",
+                                log_type="LIGHTING"
+                            )
+                    except Exception as e:
+                        self.logger.warning(
+                            "Main",
+                            f"Błąd w adaptacyjnym oświetleniu: {str(e)}",
+                            log_type="LIGHTING"
+                        )
 
                 # 2. Detekcja pozy
                 pose_detected, pose_data = self.pose_detector.detect_pose(frame)
@@ -283,6 +304,10 @@ class StickFigureWebcam:
                                 "Utracono połączenie z wirtualną kamerą",
                                 log_type="VIRTUAL_CAM"
                             )
+
+                    # Dodajemy obsługę klawiszy również tutaj,
+                    # aby poprawić responsywność gdy nie wykryto pozy
+                    self._handle_keys()
                     continue
 
                 # 3. Analiza postawy
@@ -360,10 +385,10 @@ class StickFigureWebcam:
             self._cleanup()
 
     def _show_preview(
-            self,
-            original_frame: np.ndarray,
-            pose_data: Optional[Dict[str, Any]],
-            stick_figure: Optional[np.ndarray]
+        self,
+        original_frame: np.ndarray,
+        pose_data: Optional[Dict[str, Any]],
+        stick_figure: Optional[np.ndarray]
     ) -> None:
         """
         Wyświetla podgląd obrazów w trybie debug.
@@ -436,7 +461,7 @@ class StickFigureWebcam:
 
             # Wyświetlamy status adaptacyjnego oświetlenia
             if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
-                adaptive_text = f"Adaptacyjne oświetlenie: {'ON' if self.adaptive_lighting else 'OFF'}"
+                adaptive_text = f"Adaptacyjne oswietlenie: {'ON' if self.adaptive_lighting else 'OFF'} (klawisz 'l')"
                 cv2.putText(
                     preview,
                     adaptive_text,
@@ -447,8 +472,22 @@ class StickFigureWebcam:
                     1
                 )
 
+            # Status pauzy - POPRAWKA: Używamy ASCII zamiast polskich znaków
+            if self.paused:
+                # POPRAWKA: Usunięto polskie znaki, które powodowały problemy z wyświetlaniem
+                pause_text = "PAUZA (nacisnij 'p' aby wznowic)"
+                cv2.putText(
+                    preview,
+                    pause_text,
+                    (self.width // 2 - 150, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 0, 255),  # Czerwony
+                    2
+                )
+
             # Klawisze sterujące
-            controls_text = "Controls: q/ESC=exit, p=pause, r=reset vcam, t=test pattern, d=debug"
+            controls_text = "Controls: q/ESC=exit, p=pause, r=reset vcam, t=test pattern, d=debug, l=lighting"
             cv2.putText(
                 preview,
                 controls_text,
@@ -460,7 +499,7 @@ class StickFigureWebcam:
             )
 
             # Wyświetlamy podgląd oryginalnego obrazu
-            cv2.imshow("Podgląd kamery", preview)
+            cv2.imshow("Podglad kamery", preview)
 
             # Jeśli mamy stick figure, wyświetlamy go również
             if stick_figure is not None:
@@ -474,6 +513,19 @@ class StickFigureWebcam:
                     (100, 100, 100) if self.virtual_camera.is_initialized else (50, 50, 200),
                     1
                 )
+
+                # POPRAWKA: Używamy ASCII zamiast polskich znaków w stick figure również
+                if self.paused:
+                    cv2.putText(
+                        stick_figure,
+                        "PAUZA",
+                        (self.width // 2 - 50, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (100, 100, 150),  # Przyciemniony czerwony dla stick figure
+                        2
+                    )
+
                 cv2.imshow("Stick Figure", stick_figure)
 
         except Exception as e:
@@ -487,7 +539,10 @@ class StickFigureWebcam:
         """
         Obsługuje wciśnięcia klawiszy do sterowania aplikacją.
         """
-        key = cv2.waitKey(1) & 0xFF
+        # Zwiększono czas oczekiwania w trybie pauzy dla lepszej responsywności,
+        # W trybie normalnym zostawiamy 1ms, w trybie pauzy zwiększamy do 10ms
+        wait_time = 10 if self.paused else 1
+        key = cv2.waitKey(wait_time) & 0xFF
 
         if key == 27 or key == ord('q'):  # ESC lub q - wyjście
             self.running = False
@@ -495,11 +550,17 @@ class StickFigureWebcam:
 
         elif key == ord('p'):  # p - pauza/wznowienie
             self.paused = not self.paused
+            status = "Wstrzymano" if self.paused else "Wznowiono"
             self.logger.info(
                 "Main",
-                f"{'Wstrzymano' if self.paused else 'Wznowiono'} przetwarzanie (klawisz p)",
+                f"{status} przetwarzanie (klawisz p)",
                 log_type="CONFIG"
             )
+
+            # Jeśli wznawiamy po pauzie, wyczyść bufor klawiatury OpenCV
+            # aby nie przetwarzać klawiszy naciśniętych podczas pauzy
+            if not self.paused:
+                cv2.waitKey(1)
 
         elif key == ord('d'):  # d - przełączenie trybu debug
             self.debug = not self.debug
@@ -539,20 +600,35 @@ class StickFigureWebcam:
                 self.logger.warning("Main", "Reset wirtualnej kamery nie powiódł się", log_type="VIRTUAL_CAM")
 
         elif key == ord('l'):  # l - przełączenie adaptacyjnego oświetlenia
-            if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
-                self.adaptive_lighting = not self.adaptive_lighting
+            # Sprawdzenie czy lighting_manager jest zainicjowany
+            if not hasattr(self, 'lighting_manager') or self.lighting_manager is None:
+                # Inicjalizuj manager oświetlenia podczas pierwszego włączenia
+                self.lighting_manager = AdaptiveLightingManager(
+                    adaptation_speed=0.01,  # Domyślna wartość
+                    smoothing_window=int(self.fps),  # 1 sekunda jako okno wygładzania
+                    sampling_interval=3,  # Analizuj co 3 klatkę dla oszczędności CPU
+                    logger=self.logger
+                )
                 self.logger.info(
                     "Main",
-                    f"Adaptacyjne oświetlenie {'włączone' if self.adaptive_lighting else 'wyłączone'} (klawisz l)",
+                    "Utworzono manager adaptacyjnego oświetlenia",
                     log_type="LIGHTING"
                 )
 
-                # Jeśli wyłączono adaptacyjne oświetlenie, przywróć domyślne kolory
-                if not self.adaptive_lighting:
-                    self.stick_figure_renderer.set_colors(
-                        bg_color=(255, 255, 255),  # Białe tło
-                        figure_color=(0, 0, 0)  # Czarny kontur
-                    )
+            # Przełącz stan
+            self.adaptive_lighting = not self.adaptive_lighting
+            self.logger.info(
+                "Main",
+                f"Adaptacyjne oświetlenie {'włączone' if self.adaptive_lighting else 'wyłączone'} (klawisz l)",
+                log_type="LIGHTING"
+            )
+
+            # Jeśli wyłączono adaptacyjne oświetlenie, przywróć domyślne kolory
+            if not self.adaptive_lighting:
+                self.stick_figure_renderer.set_colors(
+                    bg_color=(255, 255, 255),  # Białe tło
+                    figure_color=(0, 0, 0)  # Czarny kontur
+                )
 
     def _cleanup(self) -> None:
         """
@@ -620,6 +696,7 @@ def parse_arguments():
                         help="Wyłącza automatyczne odbicie poziome obrazu")
     parser.add_argument("--skip-checks", action="store_true",
                         help="Pomija sprawdzanie wymagań systemowych")
+    # Dodane argumenty dla adaptacyjnego oświetlenia
     parser.add_argument("--adaptive-lighting", action="store_true",
                         help="Włącza adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia")
     parser.add_argument("--adaptation-speed", type=float, default=0.01,
@@ -670,7 +747,7 @@ def main():
         logger.info("Main", f"Inicjalizacja logowania do pliku: {log_file}", log_type="CONFIG")
     except Exception as e:
         print(f"BŁĄD: Nie można zainicjalizować loggera: {e}")
-        # Fallback do podstawowego loggera jeśli CustomLogger zawiedzie
+        # Fallback do podstawowego loggera, jeśli CustomLogger zawiedzie
         import logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger("fallback")

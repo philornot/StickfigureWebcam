@@ -356,7 +356,7 @@ class PoseDetector:
         landmark_list = self.mp_pose.PoseLandmarkList()
 
         for x, y, z, visibility in landmarks:
-            landmark = self.mp_pose.PoseLandmark()
+            landmark = self.mp_pose.PoseLandmark()  # todo: Warning:(359, 50) Parameter(s) unfilledPossible callees:EnumMeta.__call__(cls: Type[_EnumMemberT], value, names: None = None)EnumMeta.__call__(cls: EnumMeta, value: str, names: str | Iterable[str] | Iterable[Iterable[str]] | Mapping[str, Any], *, module: str | None = None, qualname: str | None = None, type: Any | None = None, start: int = 1)
             landmark.x = x
             landmark.y = y
             landmark.z = z
@@ -459,12 +459,28 @@ class PoseDetector:
         """
         Zwalnia zasoby używane przez detektor.
         """
-        if self.pose:
-            self.pose.close()
-            self.logger.debug("PoseDetector", "Detektor pozy zamknięty", log_type="POSE")
+        try:
+            if hasattr(self, 'pose') and self.pose is not None:
+                self.pose.close()
+                self.pose = None  # Ustawiamy na None po zamknięciu
+                self.logger.debug("PoseDetector", "Detektor pozy zamknięty", log_type="POSE")
+        except Exception as e:
+            # Nie zgłaszamy wyjątku, tylko logujemy błąd
+            self.logger.warning(
+                "PoseDetector",
+                f"Błąd podczas zamykania detektora pozy: {str(e)}",
+                log_type="POSE"
+            )
 
     def __del__(self):
         """
         Destruktor klasy, zapewniający zwolnienie zasobów.
         """
-        self.close()
+        try:
+            # Wywołujemy close() tylko jeśli pose nie jest None
+            if hasattr(self, 'pose') and self.pose is not None:
+                self.close()
+        except:
+            # Ignorujemy błędy w destruktorze - nie ma sensu ich logować,
+            # bo logger może już być niedostępny
+            pass
