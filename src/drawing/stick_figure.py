@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # src/drawing/stick_figure.py
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 
 import cv2
 import numpy as np
@@ -14,28 +14,27 @@ from src.utils.performance import PerformanceMonitor
 
 class StickFigureRenderer:
     """
-    Klasa do renderowania animowanej postaci stick figure (ludzika z kresek)
+    Klasa do renderowania prostej postaci stick figure (ludzika z kresek)
     na podstawie punktów charakterystycznych wykrytych przez PoseDetector.
 
-    Implementuje prosty model stick figure składający się z:
-    - Okrągłej głowy z podstawową mimiką
-    - Pojedynczej kreski reprezentującej tułów
-    - Dwóch kresek na każdą rękę (ramię + przedramię)
-    - Dwóch kresek na każdą nogę (udo + podudzie)
+    Implementuje bardzo czytelny i uproszczony model stick figure:
+    - Okrągła głowa z prostą mimiką (oczy i uśmiech)
+    - Prosta linia reprezentująca tułów
+    - Ręce i nogi jako proste linie bez zbędnych detali
     """
 
     def __init__(
-            self,
-            canvas_width: int = 640,
-            canvas_height: int = 480,
-            line_thickness: int = 3,
-            head_radius_factor: float = 0.075,
-            bg_color: Tuple[int, int, int] = (255, 255, 255),  # Białe tło
-            figure_color: Tuple[int, int, int] = (0, 0, 0),  # Czarny ludzik
-            chair_color: Tuple[int, int, int] = (150, 75, 0),  # Brązowe krzesło
-            smooth_factor: float = 0.3,  # Współczynnik wygładzania ruchu
-            smoothing_history: int = 3,  # Liczba klatek do wygładzania
-            logger: Optional[CustomLogger] = None
+        self,
+        canvas_width: int = 640,
+        canvas_height: int = 480,
+        line_thickness: int = 3,
+        head_radius_factor: float = 0.075,
+        bg_color: Tuple[int, int, int] = (255, 255, 255),  # Białe tło
+        figure_color: Tuple[int, int, int] = (0, 0, 0),  # Czarny ludzik
+        chair_color: Tuple[int, int, int] = (150, 75, 0),  # Brązowe krzesło
+        smooth_factor: float = 0.3,  # Współczynnik wygładzania ruchu
+        smoothing_history: int = 3,  # Liczba klatek do wygładzania
+        logger: Optional[CustomLogger] = None
     ):
         """
         Inicjalizacja renderera stick figure.
@@ -58,7 +57,7 @@ class StickFigureRenderer:
         # Parametry renderowania
         self.canvas_width = canvas_width
         self.canvas_height = canvas_height
-        self.line_thickness = line_thickness
+        self.line_thickness = max(2, line_thickness)  # Minimum grubość 2 dla lepszej widoczności
         self.head_radius_factor = head_radius_factor
         self.bg_color = bg_color
         self.figure_color = figure_color
@@ -69,8 +68,11 @@ class StickFigureRenderer:
         self.head_radius = int(head_radius_factor * canvas_height)
 
         # Bufor do wygładzania ruchu
-        self.landmark_history = []
+        self.landmark_history: List[List[Tuple[float, float, float, float]]] = []
         self.smoothing_history = smoothing_history
+
+        # Pamięć ostatnich poprawnych pozycji (do uzupełniania brakujących danych)
+        self.last_valid_positions: Dict[int, Tuple[float, float, float, float]] = {}
 
         # Stałe - indeksy punktów z PoseDetector
         self.NOSE = PoseDetector.NOSE
@@ -99,10 +101,10 @@ class StickFigureRenderer:
         )
 
     def render(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            is_sitting: bool,
-            confidence: float = 0.0
+        self,
+        landmarks: List[Tuple[float, float, float, float]],
+        is_sitting: bool,
+        confidence: float = 0.0
     ) -> np.ndarray:
         """
         Renderuje stick figure na podstawie punktów charakterystycznych.
@@ -130,15 +132,15 @@ class StickFigureRenderer:
             # Wygładzanie punktów
             smooth_landmarks = self._smooth_landmarks(landmarks)
 
-            # Tworzenie pustego obrazu (białe tło)
+            # Tworzenie pustego obrazu
             canvas = np.ones((self.canvas_height, self.canvas_width, 3), dtype=np.uint8)
             canvas[:] = self.bg_color
 
             # Rysowanie stick figure w zależności od postawy
             if is_sitting:
-                self._draw_simplified_sitting_figure(canvas, smooth_landmarks, confidence)
+                self._draw_sitting_figure(canvas, smooth_landmarks)
             else:
-                self._draw_simplified_standing_figure(canvas, smooth_landmarks, confidence)
+                self._draw_standing_figure(canvas, smooth_landmarks)
 
             self.performance.stop_timer()
             return canvas
@@ -155,8 +157,8 @@ class StickFigureRenderer:
             return np.ones((self.canvas_height, self.canvas_width, 3), dtype=np.uint8) * 255
 
     def _smooth_landmarks(
-            self,
-            landmarks: List[Tuple[float, float, float, float]]
+        self,
+        landmarks: List[Tuple[float, float, float, float]]
     ) -> List[Tuple[float, float, float, float]]:
         """
         Wygładza ruch punktów charakterystycznych między klatkami.
@@ -200,7 +202,7 @@ class StickFigureRenderer:
 
             for j, (x, y, z, vis) in enumerate(point_history):
                 # Większa waga dla nowszych punktów
-                weight = (j + 1) / len(point_history)
+                weight = j + 1
                 weight_sum += weight
 
                 x_sum += x * weight
@@ -227,501 +229,372 @@ class StickFigureRenderer:
 
         return smoothed_landmarks
 
-    def _draw_simplified_standing_figure(
-            self,
-            canvas: np.ndarray,
-            landmarks: List[Tuple[float, float, float, float]],
-            confidence: float
+    def _draw_standing_figure(
+        self,
+        canvas: np.ndarray,
+        landmarks: List[Tuple[float, float, float, float]]
     ) -> None:
         """
-        Rysuje uproszczoną wersję stick figure w pozycji stojącej.
-
-        Kluczowe zmiany:
-        - Pojedyncza kreska dla tułowia
-        - Dwie kreski dla każdej kończyny
-        - Głowa przyczepiona do górnej części tułowia
+        Rysuje stick figure w pozycji stojącej.
 
         Args:
             canvas (np.ndarray): Płótno do rysowania
             landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-            confidence (float): Pewność detekcji
         """
         h, w, _ = canvas.shape
+        points = {}
 
-        # 1. Ustalenie punktu środkowego między barkami (górny koniec tułowia)
-        if landmarks[self.LEFT_SHOULDER][3] > 0.5 and landmarks[self.RIGHT_SHOULDER][3] > 0.5:
-            left_shoulder_x = int(landmarks[self.LEFT_SHOULDER][0] * w)
-            left_shoulder_y = int(landmarks[self.LEFT_SHOULDER][1] * h)
-            right_shoulder_x = int(landmarks[self.RIGHT_SHOULDER][0] * w)
-            right_shoulder_y = int(landmarks[self.RIGHT_SHOULDER][1] * h)
+        # Konwersja punktów na współrzędne pixeli
+        for i, (x, y, _, _) in enumerate(landmarks):
+            points[i] = (int(x * w), int(y * h))
 
-            # Środek między barkami
-            shoulder_center_x = (left_shoulder_x + right_shoulder_x) // 2
-            shoulder_center_y = (left_shoulder_y + right_shoulder_y) // 2
+        # Rysowanie postaci
+        try:
+            # 1. Rysujemy tułów (linia od środka barków do środka bioder)
+            shoulder_center = self._get_midpoint(points.get(self.LEFT_SHOULDER), points.get(self.RIGHT_SHOULDER))
+            hip_center = self._get_midpoint(points.get(self.LEFT_HIP), points.get(self.RIGHT_HIP))
 
-            # 2. Ustalenie punktu środkowego między biodrami (dolny koniec tułowia)
-            if landmarks[self.LEFT_HIP][3] > 0.5 and landmarks[self.RIGHT_HIP][3] > 0.5:
-                left_hip_x = int(landmarks[self.LEFT_HIP][0] * w)
-                left_hip_y = int(landmarks[self.LEFT_HIP][1] * h)
-                right_hip_x = int(landmarks[self.RIGHT_HIP][0] * w)
-                right_hip_y = int(landmarks[self.RIGHT_HIP][1] * h)
+            if shoulder_center and hip_center:
+                cv2.line(canvas, shoulder_center, hip_center, self.figure_color, self.line_thickness)
 
-                # Środek między biodrami
-                hip_center_x = (left_hip_x + right_hip_x) // 2
-                hip_center_y = (left_hip_y + right_hip_y) // 2
+            # 2. Rysujemy ręce
+            # Lewe ramię
+            if self.LEFT_SHOULDER in points and self.LEFT_ELBOW in points:
+                cv2.line(canvas, points[self.LEFT_SHOULDER], points[self.LEFT_ELBOW],
+                         self.figure_color, self.line_thickness)
 
-                # 3. Rysowanie pojedynczej kreski tułowia
+                # Lewe przedramię
+                if self.LEFT_WRIST in points:
+                    cv2.line(canvas, points[self.LEFT_ELBOW], points[self.LEFT_WRIST],
+                             self.figure_color, self.line_thickness)
+
+            # Prawe ramię
+            if self.RIGHT_SHOULDER in points and self.RIGHT_ELBOW in points:
+                cv2.line(canvas, points[self.RIGHT_SHOULDER], points[self.RIGHT_ELBOW],
+                         self.figure_color, self.line_thickness)
+
+                # Prawe przedramię
+                if self.RIGHT_WRIST in points:
+                    cv2.line(canvas, points[self.RIGHT_ELBOW], points[self.RIGHT_WRIST],
+                             self.figure_color, self.line_thickness)
+
+            # 3. Rysujemy nogi
+            # Lewe udo
+            if self.LEFT_HIP in points and self.LEFT_KNEE in points:
+                cv2.line(canvas, points[self.LEFT_HIP], points[self.LEFT_KNEE],
+                         self.figure_color, self.line_thickness)
+
+                # Lewa goleń
+                if self.LEFT_ANKLE in points:
+                    cv2.line(canvas, points[self.LEFT_KNEE], points[self.LEFT_ANKLE],
+                             self.figure_color, self.line_thickness)
+
+            # Prawe udo
+            if self.RIGHT_HIP in points and self.RIGHT_KNEE in points:
+                cv2.line(canvas, points[self.RIGHT_HIP], points[self.RIGHT_KNEE],
+                         self.figure_color, self.line_thickness)
+
+                # Prawa goleń
+                if self.RIGHT_ANKLE in points:
+                    cv2.line(canvas, points[self.RIGHT_KNEE], points[self.RIGHT_ANKLE],
+                             self.figure_color, self.line_thickness)
+
+            # 4. Rysujemy głowę
+            if self.NOSE in points:
+                head_pos = points[self.NOSE]
+                self._draw_simple_head(canvas, head_pos)
+            elif shoulder_center:
+                # Jeśli brak nosa, używamy pozycji nad barkami
+                head_pos = (shoulder_center[0], shoulder_center[1] - self.head_radius - 10)
+                self._draw_simple_head(canvas, head_pos)
+
+        except Exception as e:
+            self.logger.error(
+                "StickFigureRenderer",
+                f"Błąd podczas rysowania postaci stojącej: {str(e)}",
+                log_type="DRAWING"
+            )
+
+    def _draw_sitting_figure(
+        self,
+        canvas: np.ndarray,
+        landmarks: List[Tuple[float, float, float, float]]
+    ) -> None:
+        """
+        Rysuje stick figure w pozycji siedzącej wraz z krzesłem.
+
+        Args:
+            canvas (np.ndarray): Płótno do rysowania
+            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
+        """
+        h, w, _ = canvas.shape
+        points = {}
+
+        # Konwersja punktów na współrzędne pixeli
+        for i, (x, y, _, _) in enumerate(landmarks):
+            points[i] = (int(x * w), int(y * h))
+
+        try:
+            # 1. Ustalenie punktu środkowego bioder
+            hip_center = None
+            if self.LEFT_HIP in points and self.RIGHT_HIP in points:
+                hip_center = self._get_midpoint(points[self.LEFT_HIP], points[self.RIGHT_HIP])
+            elif self.LEFT_HIP in points:
+                hip_center = points[self.LEFT_HIP]
+            elif self.RIGHT_HIP in points:
+                hip_center = points[self.RIGHT_HIP]
+
+            # Jeśli nie mamy pozycji bioder, użyjmy pozycji barków
+            shoulder_center = None
+            if self.LEFT_SHOULDER in points and self.RIGHT_SHOULDER in points:
+                shoulder_center = self._get_midpoint(points[self.LEFT_SHOULDER], points[self.RIGHT_SHOULDER])
+
+                if not hip_center and shoulder_center:
+                    # Oszacujmy pozycję bioder jako niżej od barków
+                    hip_offset = int(self.head_radius * 3)
+                    hip_center = (shoulder_center[0], shoulder_center[1] + hip_offset)
+
+            # 2. Rysujemy krzesło
+            if hip_center:
+                self._draw_simple_chair(canvas, hip_center)
+
+            # 3. Rysujemy tułów
+            if shoulder_center and hip_center:
+                cv2.line(canvas, shoulder_center, hip_center, self.figure_color, self.line_thickness)
+
+            # 4. Rysujemy ręce
+            # Lewe ramię
+            if self.LEFT_SHOULDER in points and self.LEFT_ELBOW in points:
+                cv2.line(canvas, points[self.LEFT_SHOULDER], points[self.LEFT_ELBOW],
+                         self.figure_color, self.line_thickness)
+
+                # Lewe przedramię
+                if self.LEFT_WRIST in points:
+                    cv2.line(canvas, points[self.LEFT_ELBOW], points[self.LEFT_WRIST],
+                             self.figure_color, self.line_thickness)
+
+            # Prawe ramię
+            if self.RIGHT_SHOULDER in points and self.RIGHT_ELBOW in points:
+                cv2.line(canvas, points[self.RIGHT_SHOULDER], points[self.RIGHT_ELBOW],
+                         self.figure_color, self.line_thickness)
+
+                # Prawe przedramię
+                if self.RIGHT_WRIST in points:
+                    cv2.line(canvas, points[self.RIGHT_ELBOW], points[self.RIGHT_WRIST],
+                             self.figure_color, self.line_thickness)
+
+            # 5. Skrócone nogi (tylko górne części)
+            # Lewe udo - krótkie
+            if self.LEFT_HIP in points and self.LEFT_KNEE in points:
+                knee_pos = points[self.LEFT_KNEE]
+                # Krótszy odcinek nogi
+                hip_knee_vector = (knee_pos[0] - points[self.LEFT_HIP][0],
+                                   knee_pos[1] - points[self.LEFT_HIP][1])
+                shorter_knee_x = points[self.LEFT_HIP][0] + hip_knee_vector[0] // 2
+                shorter_knee_y = points[self.LEFT_HIP][1] + hip_knee_vector[1] // 2
+                shorter_knee = (shorter_knee_x, shorter_knee_y)
+
+                cv2.line(canvas, points[self.LEFT_HIP], shorter_knee,
+                         self.figure_color, self.line_thickness)
+
+            # Prawe udo - krótkie
+            if self.RIGHT_HIP in points and self.RIGHT_KNEE in points:
+                knee_pos = points[self.RIGHT_KNEE]
+                # Krótszy odcinek nogi
+                hip_knee_vector = (knee_pos[0] - points[self.RIGHT_HIP][0],
+                                   knee_pos[1] - points[self.RIGHT_HIP][1])
+                shorter_knee_x = points[self.RIGHT_HIP][0] + hip_knee_vector[0] // 2
+                shorter_knee_y = points[self.RIGHT_HIP][1] + hip_knee_vector[1] // 2
+                shorter_knee = (shorter_knee_x, shorter_knee_y)
+
+                cv2.line(canvas, points[self.RIGHT_HIP], shorter_knee,
+                         self.figure_color, self.line_thickness)
+
+            # 6. Rysujemy głowę
+            if self.NOSE in points:
+                head_pos = points[self.NOSE]
+                self._draw_simple_head(canvas, head_pos)
+            elif shoulder_center:
+                # Jeśli brak nosa, używamy pozycji nad barkami
+                head_pos = (shoulder_center[0], shoulder_center[1] - self.head_radius - 10)
+                self._draw_simple_head(canvas, head_pos)
+
+        except Exception as e:
+            self.logger.error(
+                "StickFigureRenderer",
+                f"Błąd podczas rysowania postaci siedzącej: {str(e)}",
+                log_type="DRAWING"
+            )
+
+    def _draw_simple_head(self, canvas: np.ndarray, position: Tuple[int, int]) -> None:
+        """
+        Rysuje prostą głowę z podstawową mimiką.
+
+        Args:
+            canvas (np.ndarray): Płótno do rysowania
+            position (Tuple[int, int]): Pozycja środka głowy (x, y)
+        """
+        try:
+            # Bezpieczne konwersje na int
+            x, y = int(position[0]), int(position[1])
+
+            # Rysujemy okrąg głowy
+            cv2.circle(canvas, (x, y), self.head_radius, self.figure_color, self.line_thickness)
+
+            # Oczy - proste kropki
+            eye_offset_x = self.head_radius // 3
+            eye_offset_y = self.head_radius // 4
+            eye_size = max(2, self.head_radius // 8)
+
+            cv2.circle(canvas, (x - eye_offset_x, y - eye_offset_y), eye_size, self.figure_color, -1)
+            cv2.circle(canvas, (x + eye_offset_x, y - eye_offset_y), eye_size, self.figure_color, -1)
+
+            # Usta - prosty uśmiech lub grymas
+            mouth_y = y + self.head_radius // 3
+            mouth_width = self.head_radius // 2
+
+            if self.mood == "happy":
+                # Uśmiech - prosty łuk
+                cv2.ellipse(
+                    canvas,
+                    (x, mouth_y),
+                    (mouth_width, mouth_width // 2),
+                    0, 0, 180,  # 0-180 stopni = łuk w dół
+                    self.figure_color,
+                    max(1, self.line_thickness // 2)
+                )
+            elif self.mood == "sad":
+                # Smutek - odwrócony łuk
+                cv2.ellipse(
+                    canvas,
+                    (x, mouth_y + mouth_width // 2),
+                    (mouth_width, mouth_width // 2),
+                    0, 180, 360,  # 180-360 stopni = łuk w górę
+                    self.figure_color,
+                    max(1, self.line_thickness // 2)
+                )
+            else:
+                # Neutralny - prosta linia
                 cv2.line(
                     canvas,
-                    (shoulder_center_x, shoulder_center_y),
-                    (hip_center_x, hip_center_y),
+                    (x - mouth_width, mouth_y),
+                    (x + mouth_width, mouth_y),
                     self.figure_color,
-                    self.line_thickness
+                    max(1, self.line_thickness // 2)
                 )
 
-                # 4. Rysowanie nóg (dwie kreski na każdą nogę)
-                self._draw_simplified_leg(
-                    canvas,
-                    landmarks,
-                    self.LEFT_HIP,
-                    self.LEFT_KNEE,
-                    self.LEFT_ANKLE
-                )
-
-                self._draw_simplified_leg(
-                    canvas,
-                    landmarks,
-                    self.RIGHT_HIP,
-                    self.RIGHT_KNEE,
-                    self.RIGHT_ANKLE
-                )
-
-            # 5. Rysowanie rąk (dwie kreski na każdą rękę)
-            self._draw_simplified_arm(
-                canvas,
-                landmarks,
-                self.LEFT_SHOULDER,
-                self.LEFT_ELBOW,
-                self.LEFT_WRIST
+        except Exception as e:
+            self.logger.error(
+                "StickFigureRenderer",
+                f"Błąd podczas rysowania głowy: {str(e)}",
+                log_type="DRAWING"
             )
 
-            self._draw_simplified_arm(
-                canvas,
-                landmarks,
-                self.RIGHT_SHOULDER,
-                self.RIGHT_ELBOW,
-                self.RIGHT_WRIST
-            )
-
-            # 6. Rysowanie głowy
-            self._draw_simplified_head(canvas, landmarks, shoulder_center_x, shoulder_center_y)
-
-    def _draw_simplified_sitting_figure(
-            self,
-            canvas: np.ndarray,
-            landmarks: List[Tuple[float, float, float, float]],
-            confidence: float
-    ) -> None:
+    def _draw_simple_chair(self, canvas: np.ndarray, hip_position: Tuple[int, int]) -> None:
         """
-        Rysuje uproszczoną wersję stick figure w pozycji siedzącej.
-
-        Główne zmiany:
-        - Krzesło rysowane pod środkiem bioder
-        - Pojedyncza kreska dla tułowia
-        - Skrócone lub niewidoczne nogi
+        Rysuje proste krzesło pod pozycją bioder.
 
         Args:
             canvas (np.ndarray): Płótno do rysowania
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-            confidence (float): Pewność detekcji
+            hip_position (Tuple[int, int]): Pozycja bioder (x, y)
         """
-        h, w, _ = canvas.shape
+        try:
+            # Bezpieczne konwersje na int
+            hip_x, hip_y = int(hip_position[0]), int(hip_position[1])
 
-        # 1. Ustalenie punktu środkowego między barkami (górny koniec tułowia)
-        if landmarks[self.LEFT_SHOULDER][3] > 0.5 and landmarks[self.RIGHT_SHOULDER][3] > 0.5:
-            left_shoulder_x = int(landmarks[self.LEFT_SHOULDER][0] * w)
-            left_shoulder_y = int(landmarks[self.LEFT_SHOULDER][1] * h)
-            right_shoulder_x = int(landmarks[self.RIGHT_SHOULDER][0] * w)
-            right_shoulder_y = int(landmarks[self.RIGHT_SHOULDER][1] * h)
+            # Parametry krzesła
+            chair_width = self.head_radius * 4
+            seat_height = self.head_radius // 2
+            leg_height = self.head_radius * 2
 
-            # Środek między barkami
-            shoulder_center_x = (left_shoulder_x + right_shoulder_x) // 2
-            shoulder_center_y = (left_shoulder_y + right_shoulder_y) // 2
+            # Siedzisko - prostokąt
+            seat_left = hip_x - chair_width // 2
+            seat_right = hip_x + chair_width // 2
+            seat_top = hip_y
+            seat_bottom = hip_y + seat_height
 
-            # 2. Ustalenie punktu środkowego między biodrami (dolny koniec tułowia)
-            if landmarks[self.LEFT_HIP][3] > 0.5 and landmarks[self.RIGHT_HIP][3] > 0.5:
-                left_hip_x = int(landmarks[self.LEFT_HIP][0] * w)
-                left_hip_y = int(landmarks[self.LEFT_HIP][1] * h)
-                right_hip_x = int(landmarks[self.RIGHT_HIP][0] * w)
-                right_hip_y = int(landmarks[self.RIGHT_HIP][1] * h)
+            # Upewniamy się, że punkty są w granicach obrazu
+            h, w, _ = canvas.shape
+            seat_left = max(0, min(w - 1, seat_left))
+            seat_right = max(0, min(w - 1, seat_right))
+            seat_top = max(0, min(h - 1, seat_top))
+            seat_bottom = max(0, min(h - 1, seat_bottom))
 
-                # Środek między biodrami
-                hip_center_x = (left_hip_x + right_hip_x) // 2
-                hip_center_y = (left_hip_y + right_hip_y) // 2
-
-                # 3. Najpierw rysujemy krzesło pod biodrami
-                self._draw_simplified_chair(canvas, hip_center_x, hip_center_y)
-
-                # 4. Rysowanie pojedynczej kreski tułowia
-                cv2.line(
-                    canvas,
-                    (shoulder_center_x, shoulder_center_y),
-                    (hip_center_x, hip_center_y),
-                    self.figure_color,
-                    self.line_thickness
-                )
-
-                # 5. Rysujemy krótkie nogi lub fragmenty nóg wystające z krzesła
-                # Dla siedzącej postaci rysujemy jedynie górne części nóg (biodro-kolano)
-                if landmarks[self.LEFT_HIP][3] > 0.5 and landmarks[self.LEFT_KNEE][3] > 0.5:
-                    # Konwertujemy współrzędne
-                    left_hip_x = int(landmarks[self.LEFT_HIP][0] * w)
-                    left_hip_y = int(landmarks[self.LEFT_HIP][1] * h)
-                    left_knee_x = int(landmarks[self.LEFT_KNEE][0] * w)
-
-                    # Wirtualne kolano - krótsze niż rzeczywiste
-                    knee_offset_y = int(self.head_radius * 1.5)
-                    virtual_knee_y = left_hip_y + knee_offset_y
-
-                    # Rysowanie górnej części nogi
-                    cv2.line(
-                        canvas,
-                        (left_hip_x, left_hip_y),
-                        (left_knee_x, virtual_knee_y),
-                        self.figure_color,
-                        self.line_thickness
-                    )
-
-                if landmarks[self.RIGHT_HIP][3] > 0.5 and landmarks[self.RIGHT_KNEE][3] > 0.5:
-                    # Konwertujemy współrzędne
-                    right_hip_x = int(landmarks[self.RIGHT_HIP][0] * w)
-                    right_hip_y = int(landmarks[self.RIGHT_HIP][1] * h)
-                    right_knee_x = int(landmarks[self.RIGHT_KNEE][0] * w)
-
-                    # Wirtualne kolano - krótsze niż rzeczywiste
-                    knee_offset_y = int(self.head_radius * 1.5)
-                    virtual_knee_y = right_hip_y + knee_offset_y
-
-                    # Rysowanie górnej części nogi
-                    cv2.line(
-                        canvas,
-                        (right_hip_x, right_hip_y),
-                        (right_knee_x, virtual_knee_y),
-                        self.figure_color,
-                        self.line_thickness
-                    )
-
-            # 6. Rysowanie rąk (dwie kreski na każdą rękę)
-            self._draw_simplified_arm(
+            # Rysujemy siedzisko
+            cv2.rectangle(
                 canvas,
-                landmarks,
-                self.LEFT_SHOULDER,
-                self.LEFT_ELBOW,
-                self.LEFT_WRIST
+                (seat_left, seat_top),
+                (seat_right, seat_bottom),
+                self.chair_color,
+                -1  # wypełniony
             )
 
-            self._draw_simplified_arm(
-                canvas,
-                landmarks,
-                self.RIGHT_SHOULDER,
-                self.RIGHT_ELBOW,
-                self.RIGHT_WRIST
-            )
+            # Nogi krzesła - dwie pionowe linie
+            leg_width = max(1, self.line_thickness - 1)
 
-            # 7. Rysowanie głowy
-            self._draw_simplified_head(canvas, landmarks, shoulder_center_x, shoulder_center_y)
-
-    def _draw_simplified_head(
-            self,
-            canvas: np.ndarray,
-            landmarks: List[Tuple[float, float, float, float]],
-            shoulder_center_x: int,
-            shoulder_center_y: int
-    ) -> None:
-        """
-        Rysuje uproszczoną głowę stick figure z prostą mimiką.
-
-        Args:
-            canvas (np.ndarray): Płótno do rysowania
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-            shoulder_center_x (int): Współrzędna X środka między barkami
-            shoulder_center_y (int): Współrzędna Y środka między barkami
-        """
-        h, w, _ = canvas.shape
-
-        # Ustalamy pozycję głowy
-        head_x, head_y = shoulder_center_x, shoulder_center_y - self.head_radius - 5
-
-        # Jeśli nos jest widoczny, używamy jego pozycji
-        if landmarks[self.NOSE][3] > 0.5:
-            head_x = int(landmarks[self.NOSE][0] * w)
-            head_y = int(landmarks[self.NOSE][1] * h)
-
-        # Rysujemy okrąg głowy
-        cv2.circle(canvas, (head_x, head_y), self.head_radius, self.figure_color, self.line_thickness)
-
-        # Rysujemy oczy
-        eye_size = max(2, int(self.head_radius * 0.15))
-        eye_offset_x = int(self.head_radius * 0.3)
-        eye_offset_y = int(self.head_radius * 0.1)
-
-        left_eye_x = head_x - eye_offset_x
-        right_eye_x = head_x + eye_offset_x
-
-        eyes_y = head_y - eye_offset_y
-
-        # Rysujemy czarne kropki jako oczy
-        cv2.circle(canvas, (left_eye_x, eyes_y), eye_size, self.figure_color, -1)
-        cv2.circle(canvas, (right_eye_x, eyes_y), eye_size, self.figure_color, -1)
-
-        # Rysujemy uśmiech jako łuk
-        smile_y = head_y + int(self.head_radius * 0.2)
-        smile_width = int(self.head_radius * 0.6)
-        smile_height = int(self.head_radius * 0.3)
-
-        # W zależności od nastroju rysujemy odpowiednią minę
-        if self.mood == "happy":
-            # Uśmiech - krzywa w górę
-            cv2.ellipse(
-                canvas,
-                (head_x, smile_y),
-                (smile_width, smile_height),
-                0, 0, 180, self.figure_color, self.line_thickness // 2
-            )
-        elif self.mood == "sad":
-            # Smutek - krzywa w dół
-            cv2.ellipse(
-                canvas,
-                (head_x, smile_y + smile_height * 2),
-                (smile_width, smile_height),
-                0, 180, 360, self.figure_color, self.line_thickness // 2
-            )
-        else:  # neutral
-            # Neutralna linia prosta
+            # Lewa noga
+            left_leg_x = seat_left + chair_width // 4
             cv2.line(
                 canvas,
-                (head_x - smile_width, smile_y),
-                (head_x + smile_width, smile_y),
-                self.figure_color,
-                self.line_thickness // 2
+                (left_leg_x, seat_bottom),
+                (left_leg_x, seat_bottom + leg_height),
+                self.chair_color,
+                leg_width
             )
 
-    def _draw_simplified_arm(
-            self,
-            canvas: np.ndarray,
-            landmarks: List[Tuple[float, float, float, float]],
-            shoulder_idx: int,
-            elbow_idx: int,
-            wrist_idx: int
-    ) -> None:
+            # Prawa noga
+            right_leg_x = seat_right - chair_width // 4
+            cv2.line(
+                canvas,
+                (right_leg_x, seat_bottom),
+                (right_leg_x, seat_bottom + leg_height),
+                self.chair_color,
+                leg_width
+            )
+
+            # Oparcie - prosta pionowa linia
+            backrest_height = self.head_radius * 2
+            cv2.line(
+                canvas,
+                (hip_x, seat_top),
+                (hip_x, seat_top - backrest_height),
+                self.chair_color,
+                leg_width
+            )
+
+        except Exception as e:
+            self.logger.error(
+                "StickFigureRenderer",
+                f"Błąd podczas rysowania krzesła: {str(e)}",
+                log_type="DRAWING"
+            )
+
+    def _get_midpoint(self, p1: Any, p2: Any) -> Optional[Tuple[int, int]]:
         """
-        Rysuje uproszczoną rękę jako dwie linie: ramię i przedramię.
+        Bezpiecznie oblicza punkt środkowy między dwoma punktami.
 
         Args:
-            canvas (np.ndarray): Płótno do rysowania
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-            shoulder_idx (int): Indeks punktu barku
-            elbow_idx (int): Indeks punktu łokcia
-            wrist_idx (int): Indeks punktu nadgarstka
+            p1: Pierwszy punkt (x, y)
+            p2: Drugi punkt (x, y)
+
+        Returns:
+            Optional[Tuple[int, int]]: Punkt środkowy (x, y) lub None jeśli punkty niedostępne
         """
-        h, w, _ = canvas.shape
+        if p1 is None or p2 is None:
+            return None
 
-        # Sprawdzamy widoczność punktów
-        shoulder_visible = landmarks[shoulder_idx][3] > 0.5
-        elbow_visible = landmarks[elbow_idx][3] > 0.5
-        wrist_visible = landmarks[wrist_idx][3] > 0.5
-
-        # Konwertujemy współrzędne
-        if shoulder_visible:
-            shoulder_x = int(landmarks[shoulder_idx][0] * w)
-            shoulder_y = int(landmarks[shoulder_idx][1] * h)
-
-            if elbow_visible:
-                elbow_x = int(landmarks[elbow_idx][0] * w)
-                elbow_y = int(landmarks[elbow_idx][1] * h)
-
-                # Rysowanie ramienia (bark-łokieć)
-                cv2.line(
-                    canvas,
-                    (shoulder_x, shoulder_y),
-                    (elbow_x, elbow_y),
-                    self.figure_color,
-                    self.line_thickness
-                )
-
-                if wrist_visible:
-                    wrist_x = int(landmarks[wrist_idx][0] * w)
-                    wrist_y = int(landmarks[wrist_idx][1] * h)
-
-                    # Rysowanie przedramienia (łokieć-nadgarstek)
-                    cv2.line(
-                        canvas,
-                        (elbow_x, elbow_y),
-                        (wrist_x, wrist_y),
-                        self.figure_color,
-                        self.line_thickness
-                    )
-
-                    # Opcjonalnie dodajemy małą kropkę jako dłoń
-                    hand_radius = max(2, self.line_thickness // 2)
-                    cv2.circle(canvas, (wrist_x, wrist_y), hand_radius, self.figure_color, -1)
-
-    def _draw_simplified_leg(
-            self,
-            canvas: np.ndarray,
-            landmarks: List[Tuple[float, float, float, float]],
-            hip_idx: int,
-            knee_idx: int,
-            ankle_idx: int
-    ) -> None:
-        """
-        Rysuje uproszczoną nogę jako dwie linie: udo i podudzie.
-
-        Args:
-            canvas (np.ndarray): Płótno do rysowania
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-            hip_idx (int): Indeks punktu biodra
-            knee_idx (int): Indeks punktu kolana
-            ankle_idx (int): Indeks punktu kostki
-        """
-        h, w, _ = canvas.shape
-
-        # Sprawdzamy widoczność punktów
-        hip_visible = landmarks[hip_idx][3] > 0.5
-        knee_visible = landmarks[knee_idx][3] > 0.5
-        ankle_visible = landmarks[ankle_idx][3] > 0.5
-
-        # Konwertujemy współrzędne
-        if hip_visible:
-            hip_x = int(landmarks[hip_idx][0] * w)
-            hip_y = int(landmarks[hip_idx][1] * h)
-
-            if knee_visible:
-                knee_x = int(landmarks[knee_idx][0] * w)
-                knee_y = int(landmarks[knee_idx][1] * h)
-
-                # Rysowanie uda (biodro-kolano)
-                cv2.line(
-                    canvas,
-                    (hip_x, hip_y),
-                    (knee_x, knee_y),
-                    self.figure_color,
-                    self.line_thickness
-                )
-
-                if ankle_visible:
-                    ankle_x = int(landmarks[ankle_idx][0] * w)
-                    ankle_y = int(landmarks[ankle_idx][1] * h)
-
-                    # Rysowanie podudzia (kolano-kostka)
-                    cv2.line(
-                        canvas,
-                        (knee_x, knee_y),
-                        (ankle_x, ankle_y),
-                        self.figure_color,
-                        self.line_thickness
-                    )
-
-                    # Opcjonalnie dodajemy małą kreskę jako stopę
-                    foot_length = self.head_radius // 2
-                    if hip_idx == self.LEFT_HIP:  # Lewa noga
-                        foot_x = ankle_x - foot_length
-                    else:  # Prawa noga
-                        foot_x = ankle_x + foot_length
-
-                    cv2.line(
-                        canvas,
-                        (ankle_x, ankle_y),
-                        (foot_x, ankle_y),
-                        self.figure_color,
-                        self.line_thickness
-                    )
-
-    def _draw_simplified_chair(
-            self,
-            canvas: np.ndarray,
-            hip_center_x: int,
-            hip_center_y: int
-    ) -> None:
-        """
-        Rysuje uproszczone krzesło pod siedzącą postacią.
-
-        Args:
-            canvas (np.ndarray): Płótno do rysowania
-            hip_center_x (int): Współrzędna X środka bioder
-            hip_center_y (int): Współrzędna Y środka bioder
-        """
-        h, w, _ = canvas.shape
-
-        # Ustalamy parametry krzesła
-        chair_width = self.head_radius * 4
-        seat_height = self.head_radius // 2
-        leg_height = self.head_radius * 3
-
-        # Pozycja siedziska
-        seat_left = hip_center_x - chair_width // 2
-        seat_right = hip_center_x + chair_width // 2
-        seat_top = hip_center_y
-        seat_bottom = seat_top + seat_height
-
-        # Rysujemy siedzisko (prostokąt)
-        cv2.rectangle(
-            canvas,
-            (seat_left, seat_top),
-            (seat_right, seat_bottom),
-            self.chair_color,
-            -1  # Wypełnione
-        )
-
-        # Rysujemy krawędzie siedziska
-        cv2.rectangle(
-            canvas,
-            (seat_left, seat_top),
-            (seat_right, seat_bottom),
-            (int(self.chair_color[0] * 0.7), int(self.chair_color[1] * 0.7), int(self.chair_color[2] * 0.7)),
-            1  # Grubość krawędzi
-        )
-
-        # Szerokość nóg krzesła
-        leg_width = max(2, self.line_thickness)
-
-        # Rysujemy nogi krzesła (jako proste linie)
-        # Lewa noga
-        left_leg_x = seat_left + chair_width // 4
-        cv2.line(
-            canvas,
-            (left_leg_x, seat_bottom),
-            (left_leg_x, seat_bottom + leg_height),
-            self.chair_color,
-            leg_width
-        )
-
-        # Prawa noga
-        right_leg_x = seat_right - chair_width // 4
-        cv2.line(
-            canvas,
-            (right_leg_x, seat_bottom),
-            (right_leg_x, seat_bottom + leg_height),
-            self.chair_color,
-            leg_width
-        )
-
-        # Rysujemy oparcie krzesła jako pionową linię
-        backrest_height = self.head_radius * 2
-        backrest_x = hip_center_x
-        cv2.line(
-            canvas,
-            (backrest_x, seat_top),
-            (backrest_x, seat_top - backrest_height),
-            self.chair_color,
-            leg_width
-        )
+        try:
+            x1, y1 = int(p1[0]), int(p1[1])
+            x2, y2 = int(p2[0]), int(p2[1])
+            return (int((x1 + x2) // 2), int((y1 + y2) // 2))
+        except (TypeError, IndexError, ValueError):
+            return None
 
     def set_colors(
-            self,
-            bg_color: Optional[Tuple[int, int, int]] = None,
-            figure_color: Optional[Tuple[int, int, int]] = None,
-            chair_color: Optional[Tuple[int, int, int]] = None
+        self,
+        bg_color: Optional[Tuple[int, int, int]] = None,
+        figure_color: Optional[Tuple[int, int, int]] = None,
+        chair_color: Optional[Tuple[int, int, int]] = None
     ) -> None:
         """
         Aktualizuje kolory używane do rysowania.
@@ -825,11 +698,13 @@ class StickFigureRenderer:
 
         # Resetowanie historii wygładzania, ponieważ współrzędne będą w innej skali
         self.landmark_history = []
+        self.last_valid_positions = {}
 
     def reset(self) -> None:
         """
         Resetuje wewnętrzny stan renderera.
         """
         self.landmark_history = []
+        self.last_valid_positions = {}
         self.mood = "happy"  # Przywrócenie domyślnego nastroju
         self.logger.debug("StickFigureRenderer", "Reset wewnętrznego stanu renderera", log_type="DRAWING")
