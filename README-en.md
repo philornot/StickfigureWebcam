@@ -4,7 +4,7 @@
 
 *[Polska wersja (README.md)](README.md)*
 
-![Python Version](https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10-blue?logo=python&logoColor=white)
+![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -23,10 +23,6 @@ A Python application that captures your webcam feed, detects your pose in real-t
 stick figure on a white background. The app automatically detects whether you're sitting or standing and adjusts the
 animation accordingly. The generated image is available as a virtual camera source, which you can use in applications
 like Discord, Zoom, Teams, or other video conferencing tools.
-
-<div align="center">
-  <img src="stick-figure-workflow.svg" width="700" alt="Application workflow diagram">
-</div>
 
 ### ✨ Key Features
 

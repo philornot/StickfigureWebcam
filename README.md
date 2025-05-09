@@ -24,10 +24,6 @@ je na animowaną postać stick figure (ludzika z kresek) na białym tle. Program
 czy stoi, i odpowiednio dostosowuje animację. Wygenerowany obraz jest dostępny jako wirtualna kamera, którą można
 wykorzystać w aplikacjach takich jak Discord, Zoom, Teams czy inne komunikatory wideo.
 
-<div align="center">
-  <img src="stick-figure-workflow.svg" width="700" alt="Schemat działania aplikacji">
-</div>
-
 ### ✨ Główne funkcje
 
 - 🕺 Detekcja pozy człowieka w czasie rzeczywistym
