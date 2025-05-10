@@ -1,35 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# src/main_updated.py
-# Zaktualizowana wersja main.py z integracją FaceMesh
+# main.py - Wersja z rozszerzonym debugowaniem
+
+"""
+Główny skrypt dla Reaktywnego Stick Figure Webcam dla Discorda.
+Przechwytuje obraz z kamery, wykrywa twarz i generuje animowaną postać patyczaka.
+Dodano rozszerzone debugowanie i wizualizację wykrywania twarzy.
+"""
 
 import argparse
-import logging
 import os
 import sys
 import time
-from typing import Dict, Any, Optional
 
 import cv2
-import numpy as np
-from src.drawing.stick_figure import StickFigureRenderer
-from src.face.face_mesh_detector import FaceMeshDetector
+import mediapipe as mp
 
-from src.camera.camera_capture import CameraCapture
-from src.camera.virtual_camera import VirtualCamera
-from src.lighting.adaptive_colors import AdaptiveLightingManager
-from src.pose.pose_detector import PoseDetector
-from src.pose.posture_analyzer import PostureAnalyzer
-from src.utils.custom_logger import CustomLogger
-from src.utils.performance import PerformanceMonitor
-from src.utils.setup_dialog import show_setup_dialog
-from src.utils.system_check import check_system_requirements
+# Importy z uproszczonych modułów w katalogu drawing
+from drawing.stick_figure_renderer import StickFigureRenderer
 
 
 class StickFigureWebcam:
     """
     Główna klasa aplikacji, która łączy wszystkie komponenty i zarządza przepływem danych.
-    Wersja rozszerzona o detekcję twarzy przy użyciu MediaPipe FaceMesh.
+    Uproszczona wersja koncentrująca się na wykrywaniu twarzy i rysowaniu patyczaka na środku ekranu.
+    Dodano rozszerzone debugowanie i wizualizację wykrywania twarzy.
     """
 
     def __init__(
@@ -39,15 +34,10 @@ class StickFigureWebcam:
         height: int = 480,
         fps: int = 30,
         debug: bool = False,
-        log_level: str = "INFO",
-        log_file: Optional[str] = None,
         show_preview: bool = True,
         flip_camera: bool = True,
-        adaptive_lighting: bool = False,
-        adaptation_speed: float = 0.01,
-        use_face_mesh: bool = True,  # Nowy parametr do włączania/wyłączania face mesh
-        face_detail_level: str = "medium",  # Nowy parametr do ustawiania poziomu szczegółowości twarzy
-        logger: Optional[CustomLogger] = None
+        use_virtual_camera: bool = True,
+        show_face_mesh: bool = True  # Nowa opcja - pokazywanie siatki twarzy
     ):
         """
         Inicjalizacja aplikacji Stick Figure Webcam.
@@ -58,15 +48,10 @@ class StickFigureWebcam:
             height (int): Wysokość obrazu
             fps (int): Docelowa liczba klatek na sekundę
             debug (bool): Czy włączyć tryb debugowania
-            log_level (str): Poziom logowania ("TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-            log_file (Optional[str]): Ścieżka do pliku logów (None dla logowania tylko do konsoli)
             show_preview (bool): Czy pokazywać podgląd obrazu
             flip_camera (bool): Czy odbijać obraz z kamery w poziomie
-            adaptive_lighting (bool): Czy włączyć adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia
-            adaptation_speed (float): Szybkość adaptacji kolorów (0.001-0.1)
-            use_face_mesh (bool): Czy używać detekcji twarzy FaceMesh
-            face_detail_level (str): Poziom szczegółowości twarzy ("low", "medium", "high")
-            logger (Optional[CustomLogger]): Opcjonalny logger (zamiast tworzenia nowego)
+            use_virtual_camera (bool): Czy używać wirtualnej kamery
+            show_face_mesh (bool): Czy pokazywać siatkę twarzy na podglądzie
         """
         # Konfiguracja
         self.width = width
@@ -75,123 +60,72 @@ class StickFigureWebcam:
         self.debug = debug
         self.show_preview = show_preview
         self.flip_camera = flip_camera
-        self.adaptive_lighting = adaptive_lighting
-        self.use_face_mesh = use_face_mesh
-        self.face_detail_level = face_detail_level
+        self.use_virtual_camera = use_virtual_camera
+        self.show_face_mesh = show_face_mesh
 
         # Flagi stanu
         self.running = False
         self.paused = False
+        self.show_chair = False
 
-        # Użycie istniejącego loggera lub utworzenie nowego
-        if logger:
-            self.logger = logger
-        else:
-            # Ścieżka logów
-            if log_file is None and not os.path.exists("logs"):
-                os.makedirs("logs", exist_ok=True)
-                log_file = os.path.join("logs", f"stick_figure_webcam_{time.strftime('%Y%m%d_%H%M%S')}.log")
-
-            # Inicjalizacja loggera
-            console_level = "DEBUG" if debug else log_level
-            file_level = "DEBUG"  # Zawsze zapisujemy debugi do pliku
-
-            self.logger = CustomLogger(
-                log_file=log_file,
-                console_level=console_level,
-                file_level=file_level,
-                verbose=debug
-            )
-
-        self.logger.info("Main", "Inicjalizacja Stick Figure Webcam z Face Mesh", log_type="CONFIG")
-
-        # Monitor wydajności
-        self.performance = PerformanceMonitor("Main")
+        print(f"Inicjalizacja Stick Figure Webcam ({width}x{height} @ {fps}FPS)")
 
         # Inicjalizacja komponentów
         try:
             # Inicjalizacja kamery
-            self.logger.info("Main", "Inicjalizacja kamery", log_type="CAMERA")
-            self.camera = CameraCapture(
-                camera_id=camera_id,
-                width=width,
-                height=height,
-                fps=fps,
-                logger=self.logger
-            )
+            print("Inicjalizacja kamery...")
+            self.camera = cv2.VideoCapture(camera_id)
+            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            self.camera.set(cv2.CAP_PROP_FPS, fps)
 
-            # Inicjalizacja wirtualnej kamery
-            self.logger.info("Main", "Inicjalizacja wirtualnej kamery", log_type="VIRTUAL_CAM")
-            self.virtual_camera = VirtualCamera(
-                width=width,
-                height=height,
-                fps=fps,
-                device_name=None,  # Automatyczne wykrywanie
-                logger=self.logger,
-                max_retries=3
-            )
+            if not self.camera.isOpened():
+                raise Exception("Nie można otworzyć kamery")
 
-            # Inicjalizacja detektora pozy
-            self.logger.info("Main", "Inicjalizacja detektora pozy", log_type="POSE")
-            self.pose_detector = PoseDetector(
-                min_detection_confidence=0.6,
-                min_tracking_confidence=0.6,
-                model_complexity=1,
-                smooth_landmarks=True,
-                logger=self.logger
-            )
+            # Inicjalizacja wirtualnej kamery (jeśli wymagana)
+            self.virtual_camera_ready = False
+            if use_virtual_camera:
+                try:
+                    import pyvirtualcam
+                    print("Inicjalizacja wirtualnej kamery...")
+                    # Poprawione argumenty dla pyvirtualcam (usuń device_type)
+                    self.virtual_camera = pyvirtualcam.Camera(
+                        width=width,
+                        height=height,
+                        fps=fps
+                    )
+                    self.virtual_camera_ready = True
+                    print(f"Wirtualna kamera gotowa: {self.virtual_camera.device}")
+                except Exception as e:
+                    print(f"Nie można zainicjalizować wirtualnej kamery: {e}")
+                    print("Aplikacja będzie działać bez wirtualnej kamery.")
 
-            # Inicjalizacja analizatora postawy
-            self.logger.info("Main", "Inicjalizacja analizatora postawy", log_type="POSE")
-            self.posture_analyzer = PostureAnalyzer(
-                standing_hip_threshold=0.7,
-                confidence_threshold=0.6,
-                smoothing_factor=0.7,
-                temporal_smoothing=5,
-                partial_visibility_bias=0.8,
-                logger=self.logger
-            )
+            # Inicjalizacja detektora twarzy MediaPipe
+            print("Inicjalizacja detektora twarzy...")
+            self.mp_face_mesh = mp.solutions.face_mesh
+            self.mp_drawing = mp.solutions.drawing_utils
+            self.mp_drawing_styles = mp.solutions.drawing_styles
 
-            # Inicjalizacja detektora twarzy FaceMesh (nowy komponent)
-            if self.use_face_mesh:
-                self.logger.info("Main", "Inicjalizacja detektora twarzy FaceMesh", log_type="FACE")
-                self.face_detector = FaceMeshDetector(
-                    max_num_faces=1,
-                    min_detection_confidence=0.6,
-                    min_tracking_confidence=0.6,
-                    refine_landmarks=True,  # Dokładniejsze punkty dla oczu i ust
-                    logger=self.logger
-                )
-            else:
-                self.face_detector = None
-                self.logger.info("Main", "Detekcja twarzy FaceMesh wyłączona", log_type="FACE")
+            self.face_mesh = self.mp_face_mesh.FaceMesh(
+                static_image_mode=False,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
 
             # Inicjalizacja renderera stick figure
-            self.logger.info("Main", "Inicjalizacja renderera stick figure", log_type="DRAWING")
-            # Używamy nowej wersji renderera, która obsługuje integrację z FaceMesh
-            self.stick_figure_renderer = StickFigureRenderer(
+            print("Inicjalizacja renderera stick figure...")
+            self.renderer = StickFigureRenderer(
                 canvas_width=width,
                 canvas_height=height,
                 line_thickness=3,
                 head_radius_factor=0.075,
-                smooth_factor=0.3,
-                smoothing_history=3,
-                use_face_mesh=self.use_face_mesh,
-                face_detail_level=self.face_detail_level,
-                logger=self.logger
+                bg_color=(255, 255, 255),  # Białe tło
+                figure_color=(0, 0, 0),  # Czarny patyczak
+                smooth_factor=0.3
+                # Usunięto parametr logger
             )
-
-            # Inicjalizacja managera adaptacyjnego oświetlenia
-            if self.adaptive_lighting:
-                self.logger.info("Main", "Inicjalizacja managera adaptacyjnego oświetlenia", log_type="LIGHTING")
-                self.lighting_manager = AdaptiveLightingManager(
-                    adaptation_speed=adaptation_speed,
-                    smoothing_window=int(fps),  # 1 sekunda jako okno wygładzania
-                    sampling_interval=3,  # Analizuj co 3 klatkę dla oszczędności CPU
-                    logger=self.logger
-                )
-            else:
-                self.lighting_manager = None
 
             # Liczniki i statystyki
             self.frame_count = 0
@@ -199,630 +133,428 @@ class StickFigureWebcam:
             self.fps_timer = time.time()
             self.current_fps = 0.0
 
-            self.logger.info(
-                "Main",
-                f"Stick Figure Webcam z Face Mesh zainicjalizowany pomyślnie ({width}x{height} @ {fps}FPS)",
-                log_type="CONFIG"
-            )
+            # Ostatnie wykryte wartości ekspresji do wyświetlania na ekranie
+            self.last_expression_values = {
+                "mouth_open": 0.0,
+                "smile": 0.5
+            }
+
+            print("Stick Figure Webcam zainicjalizowany pomyślnie")
 
         except Exception as e:
-            self.logger.critical(
-                "Main",
-                f"Błąd podczas inicjalizacji: {str(e)}",
-                log_type="CONFIG",
-                error={"error": str(e)}
-            )
+            print(f"Błąd podczas inicjalizacji: {str(e)}")
             raise
 
-    def run(self) -> None:
+    def run(self):
         """
         Uruchamia główną pętlę aplikacji.
         """
         self.running = True
-        self.logger.info("Main", "Uruchamianie głównej pętli aplikacji", log_type="CONFIG")
-
-        # Inicjalizacja wirtualnej kamery - ale nie zatrzymujemy się,
-        # jeśli nie uda się zainicjalizować
-        virtual_camera_working = self.virtual_camera.initialize()
-        if virtual_camera_working:
-            # Wysyłamy testowy wzór tylko jeśli kamera działa
-            self.virtual_camera.send_test_pattern()
-        else:
-            self.logger.warning(
-                "Main",
-                "Wirtualna kamera nie działa. Aplikacja będzie kontynuować, "
-                "ale obraz nie będzie dostępny jako źródło wideo.",
-                log_type="CONFIG"
-            )
+        print("Uruchamianie głównej pętli aplikacji")
+        print(
+            "Naciśnij 'q' aby zakończyć, 'p' aby wstrzymać/wznowić, 's' aby zmienić nastrój, 'c' aby włączyć/wyłączyć krzesło")
+        print("Naciśnij 'm' aby włączyć/wyłączyć wizualizację siatki twarzy, 'd' aby włączyć/wyłączyć tryb debugowania")
 
         try:
             # Główna pętla aplikacji
             while self.running:
-                self.performance.start_timer()
-
-                # 1. Pobieranie klatki z kamery
-                ret, frame = self.camera.read()
-
-                if not ret:
-                    self.logger.warning("Main", "Nie udało się odczytać klatki z kamery", log_type="CAMERA")
-                    time.sleep(0.1)  # Krótka pauza przed ponowną próbą
-                    continue
-
-                # Odbicie obrazu w poziomie jeśli potrzeba
-                if self.flip_camera:
-                    frame = self.camera.flip_horizontal(frame)
-
-                # Aktualizacja licznika FPS
-                self.frame_count += 1
-                self.fps_counter += 1
+                # Obliczanie FPS
                 current_time = time.time()
                 if current_time - self.fps_timer >= 1.0:
                     self.current_fps = self.fps_counter / (current_time - self.fps_timer)
                     self.fps_timer = current_time
                     self.fps_counter = 0
 
+                # W trybie pauzy tylko sprawdzamy klawisze
                 if self.paused:
-                    # W trybie pauzy pokazujemy ostatni obraz lub wzór testowy
-                    if virtual_camera_working:
-                        self.virtual_camera.send_test_pattern()
-                    if self.show_preview:
-                        self._show_preview(frame, None, None, None)
-
-                    # Dodajemy obsługę klawiszy w trybie pauzy
-                    # bez tego aplikacja nie reaguje na klawisze po wejściu w stan pauzy
                     self._handle_keys()
-
-                    # Dodajemy krótkie opóźnienie, aby ograniczyć zużycie CPU w trybie pauzy
-                    time.sleep(0.05)
-
-                    # Przejście do następnej iteracji pętli
+                    time.sleep(0.05)  # Zmniejszamy obciążenie CPU
                     continue
 
-                # Analizuj jasność otoczenia i aktualizuj kolory jesli włączona funkcja adaptacyjnego oświetlenia
-                if self.adaptive_lighting and self.lighting_manager is not None:
-                    try:
-                        # Analiza jasności obrazu
-                        brightness = self.lighting_manager.analyze_frame(frame)
+                # 1. Pobieranie klatki z kamery
+                ret, frame = self.camera.read()
 
-                        # Aktualizacja kolorów na podstawie jasności
-                        bg_color, figure_color = self.lighting_manager.update_colors(brightness)
+                if not ret:
+                    print("Nie udało się odczytać klatki z kamery")
+                    time.sleep(0.1)
+                    continue
 
-                        # Ustawienie nowych kolorów dla renderera
-                        self.stick_figure_renderer.set_colors(
-                            bg_color=bg_color,
-                            figure_color=figure_color
-                        )
+                # Odbicie obrazu w poziomie jeśli potrzeba
+                if self.flip_camera:
+                    frame = cv2.flip(frame, 1)  # 1 = odbicie poziome
 
-                        # Logowanie stanu co 100 klatek
-                        if self.frame_count % 100 == 0:
-                            colors = self.lighting_manager.get_current_colors()
-                            self.logger.debug(
-                                "AdaptiveLighting",
-                                f"Jasność otoczenia: {brightness:.2f}, jasność tła: {colors['brightness_level']:.2f}",
-                                log_type="LIGHTING"
-                            )
-                    except Exception as e:
-                        self.logger.warning(
-                            "Main",
-                            f"Błąd w adaptacyjnym oświetleniu: {str(e)}",
-                            log_type="LIGHTING"
-                        )
+                # 2. Przetwarzanie obrazu
+                # Konwersja do RGB (wymagane przez MediaPipe)
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                # 2. Detekcja pozy
-                pose_detected, pose_data = self.pose_detector.detect_pose(frame)
+                # 3. Detekcja twarzy
+                face_results = self.face_mesh.process(rgb_frame)
 
-                # 3. Detekcja twarzy (nowy krok)
+                # Kopiowanie obrazu do wyświetlenia z zaznaczeniami
+                debug_frame = frame.copy()
+
+                # Przetworzenie wyników detekcji twarzy
                 face_data = None
-                if self.use_face_mesh and self.face_detector is not None:
-                    face_detected, face_data = self.face_detector.detect_face(frame)
 
-                    if face_detected:
-                        self.logger.debug(
-                            "Main",
-                            f"Wykryto twarz, ekspresje: {face_data.get('expressions', {})}",
-                            log_type="FACE"
-                        )
-                    elif self.debug and self.frame_count % 50 == 0:
-                        self.logger.debug(
-                            "Main",
-                            "Nie wykryto twarzy w tej klatce",
-                            log_type="FACE"
-                        )
+                if face_results.multi_face_landmarks:
+                    # Przetwarzanie punktów charakterystycznych twarzy
+                    face_data = self._process_face_landmarks(face_results.multi_face_landmarks[0])
 
-                if not pose_detected:
-                    # Jeśli nie wykryto pozy, pokazujemy oryginalny obraz lub pusty
-                    if self.debug and self.show_preview:
-                        self._show_preview(frame, None, None, face_data)
-
-                    # Wysyłamy biały obraz (lub można użyć np. ostatniego poprawnego stick figure)
-                    white_canvas = np.ones((self.height, self.width, 3), dtype=np.uint8) * 255
-
-                    if virtual_camera_working:
-                        # Próbujemy wysłać klatkę tylko jeśli kamera działa
-                        sent = self.virtual_camera.send_frame(white_canvas)
-                        if not sent:
-                            # Jeśli wysłanie się nie powiodło, aktualizujemy stan
-                            virtual_camera_working = False
-                            self.logger.warning(
-                                "Main",
-                                "Utracono połączenie z wirtualną kamerą",
-                                log_type="VIRTUAL_CAM"
+                    # Jeśli mamy wykryte punkty twarzy i opcja wizualizacji jest włączona,
+                    # rysujemy siatkę na obrazie debugowania
+                    if self.show_face_mesh:
+                        for face_landmarks in face_results.multi_face_landmarks:
+                            # Rysujemy siatkę twarzy na obrazie podglądu
+                            self.mp_drawing.draw_landmarks(
+                                image=debug_frame,
+                                landmark_list=face_landmarks,
+                                connections=self.mp_face_mesh.FACEMESH_TESSELATION,
+                                landmark_drawing_spec=None,
+                                connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_tesselation_style()
                             )
 
-                    # Dodajemy obsługę klawiszy również tutaj,
-                    # aby poprawić responsywność gdy nie wykryto pozy
-                    self._handle_keys()
-                    continue
+                            # Dodatkowo rysujemy kontury oczu i ust dla lepszej wizualizacji
+                            self.mp_drawing.draw_landmarks(
+                                image=debug_frame,
+                                landmark_list=face_landmarks,
+                                connections=self.mp_face_mesh.FACEMESH_CONTOURS,
+                                landmark_drawing_spec=None,
+                                connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_contours_style()
+                            )
 
-                # 4. Analiza postawy
-                posture_data = self.posture_analyzer.analyze_posture(
-                    pose_data["landmarks"],
-                    pose_data["frame_height"],
-                    pose_data["frame_width"]
-                )
+                    # Zapisujemy ostatnie wykryte wartości ekspresji
+                    if face_data and "expressions" in face_data:
+                        self.last_expression_values = face_data["expressions"]
 
-                # 5. Renderowanie stick figure (przekazujemy również dane twarzy)
-                stick_figure = self.stick_figure_renderer.render(
-                    pose_data["landmarks"],
-                    posture_data["is_sitting"],
-                    posture_data["confidence"],
-                    face_data  # Nowy parametr - dane twarzy
-                )
+                # 4. Renderowanie stick figure (zawsze na środku ekranu)
+                output_image = self.renderer.render(face_data, self.show_chair)
 
-                # 6. Wysyłanie obrazu do wirtualnej kamery
-                if virtual_camera_working:
-                    sent = self.virtual_camera.send_frame(stick_figure)
-                    if not sent:
-                        # Jeśli wysłanie się nie powiodło, aktualizujemy stan i próbujemy zresetować
-                        virtual_camera_working = False
-                        self.logger.warning(
-                            "Main",
-                            "Utracono połączenie z wirtualną kamerą. Próba resetu...",
-                            log_type="VIRTUAL_CAM"
-                        )
-                        # Próba resetu wirtualnej kamery
-                        if self.virtual_camera.reset():
-                            virtual_camera_working = self.virtual_camera.initialize()
-                            if virtual_camera_working:
-                                self.logger.info(
-                                    "Main",
-                                    "Przywrócono połączenie z wirtualną kamerą",
-                                    log_type="VIRTUAL_CAM"
-                                )
+                # 5. Wysyłanie obrazu do wirtualnej kamery
+                if self.virtual_camera_ready:
+                    # Konwersja BGR -> RGB dla pyvirtualcam
+                    output_rgb = cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB)
+                    self.virtual_camera.send(output_rgb)
 
-                # 7. Wyświetlanie podglądu
+                # 6. Wyświetlanie podglądu
                 if self.show_preview:
-                    self._show_preview(frame, pose_data, stick_figure, face_data)
+                    self._show_preview(debug_frame, output_image)
 
-                # 8. Obsługa klawiszy
+                # 7. Obsługa klawiszy
                 self._handle_keys()
 
-                # Pomiar wydajności
-                self.performance.stop_timer()
-                execution_time = self.performance.get_last_execution_time() * 1000  # ms
+                # Aktualizacja liczników
+                self.frame_count += 1
+                self.fps_counter += 1
 
-                # Logowanie wydajności co 100 klatek
-                if self.frame_count % 100 == 0:
-                    self.logger.performance_metrics(
-                        self.current_fps,
-                        execution_time,
-                        "Main"
-                    )
-
-                # Limit FPS jeśli potrzeba
-                frame_time = self.performance.get_last_execution_time()
+                # Limit FPS
+                elapsed_time = time.time() - current_time
                 target_time = 1.0 / self.fps
 
-                if frame_time < target_time:
-                    time.sleep(target_time - frame_time)
+                if elapsed_time < target_time:
+                    time.sleep(target_time - elapsed_time)
 
         except KeyboardInterrupt:
-            self.logger.info("Main", "Przerwanie przez użytkownika (Ctrl+C)", log_type="CONFIG")
+            print("Przerwanie przez użytkownika (Ctrl+C)")
         except Exception as e:
-            self.logger.critical(
-                "Main",
-                f"Błąd w głównej pętli: {str(e)}",
-                log_type="CONFIG",
-                error={"error": str(e)}
-            )
+            print(f"Błąd w głównej pętli: {str(e)}")
             raise
         finally:
             self._cleanup()
 
-    def _show_preview(
-        self,
-        original_frame: np.ndarray,
-        pose_data: Optional[Dict[str, Any]],
-        stick_figure: Optional[np.ndarray],
-        face_data: Optional[Dict[str, Any]]  # Nowy parametr
-    ) -> None:
+    def _process_face_landmarks(self, face_landmarks):
         """
-        Wyświetla podgląd obrazów w trybie debug.
+        Przetwarza punkty charakterystyczne twarzy z MediaPipe na format używany przez nasz renderer.
 
         Args:
-            original_frame (np.ndarray): Oryginalny obraz z kamery
-            pose_data (Optional[Dict[str, Any]]): Dane wykrytej pozy lub None
-            stick_figure (Optional[np.ndarray]): Wygenerowany stick figure lub None
-            face_data (Optional[Dict[str, Any]]): Dane wykrytej twarzy lub None
+            face_landmarks: Punkty charakterystyczne twarzy z MediaPipe
+
+        Returns:
+            dict: Słownik z danymi twarzy
         """
-        if not self.show_preview:
-            return
+        # Analizujemy kluczowe punkty twarzy, aby określić wyrazy mimiczne
+
+        # Domyślne wartości
+        mouth_open = 0.0
+        smile = 0.5  # Neutralny uśmiech
 
         try:
-            # Tworzymy kopię oryginalnego obrazu
-            preview = original_frame.copy()
+            # Otwartość ust - używamy punktów górnej i dolnej wargi
+            upper_lip = face_landmarks.landmark[13]  # Górna warga
+            lower_lip = face_landmarks.landmark[14]  # Dolna warga
 
-            # Jeśli mamy dane pozy, wizualizujemy punkty charakterystyczne
-            if pose_data is not None and "landmarks" in pose_data and pose_data["landmarks"] is not None:
-                # Wizualizacja pozy
-                preview = self.pose_detector.draw_pose_on_image(
-                    preview,
-                    pose_data["landmarks"],
-                    draw_connections=True
+            # Odległość między wargami wskazuje na otwartość ust
+            # Normalizacja do zakresu 0-1
+            mouth_height = abs(lower_lip.y - upper_lip.y)
+
+            # Zwiększamy czułość (mnożymy przez 20 zamiast 10)
+            mouth_open = min(1.0, max(0.0, mouth_height * 20))
+
+            # Uśmiech - używamy punktów kącików ust i ich pozycji względem środka ust
+            left_corner = face_landmarks.landmark[61]  # Lewy kącik ust
+            right_corner = face_landmarks.landmark[291]  # Prawy kącik ust
+            center_mouth = face_landmarks.landmark[13]  # Górna warga jako punkt odniesienia
+
+            # Uśmiech określamy na podstawie pozycji kącików ust względem środka
+            # Jeśli kąciki są wyżej niż środek, to uśmiech
+            # Jeśli niżej, to smutek
+            corner_height_avg = (left_corner.y + right_corner.y) / 2
+
+            # Zwiększamy czułość na zmiany (mnożymy przez 10 zamiast 5)
+            height_diff = center_mouth.y - corner_height_avg
+
+            # Debug - wypisujemy wartości różnicy wysokości
+            if self.debug and self.frame_count % 30 == 0:
+                print(f"Różnica wysokości kącików ust: {height_diff:.6f}")
+
+            if height_diff > 0.005:  # Próg dla uśmiechu
+                # Kąciki ust są wyżej - uśmiech
+                # Siła uśmiechu zależy od tego, jak wysoko są kąciki
+                smile_strength = height_diff * 10  # Zwiększona czułość
+                smile = 0.5 + min(0.5, smile_strength)  # Zakres 0.5-1.0
+            elif height_diff < -0.005:  # Próg dla smutku
+                # Kąciki ust są niżej - smutek
+                # Siła smutku zależy od tego, jak nisko są kąciki
+                sad_strength = -height_diff * 10  # Zwiększona czułość
+                smile = 0.5 - min(0.5, sad_strength)  # Zakres 0.0-0.5
+            else:
+                # Kąciki mniej więcej na poziomie środka - neutralny wyraz
+                smile = 0.5
+
+            # Dodatkowy debug wartości
+            if self.debug and self.frame_count % 30 == 0:
+                print(f"Wartość smile: {smile:.2f}, mouth_open: {mouth_open:.2f}")
+
+        except Exception as e:
+            if self.debug:
+                print(f"Błąd podczas analizy mimiki twarzy: {str(e)}")
+
+        # Tworzymy słownik z danymi twarzy
+        return {
+            "has_face": True,
+            "expressions": {
+                "mouth_open": mouth_open,
+                "smile": smile,
+                "left_eye_open": 1.0,
+                "right_eye_open": 1.0,
+            }
+        }
+
+    def _show_preview(self, original_frame, stick_figure):
+        """
+        Wyświetla podgląd obrazów z dodatkowymi informacjami debugującymi.
+
+        Args:
+            original_frame: Oryginalny obraz z kamery z oznaczeniami
+            stick_figure: Wygenerowany stick figure
+        """
+        try:
+            # Wyświetlamy podgląd z kamery z oznaczeniami
+
+            # Dodajemy informacje o FPS
+            cv2.putText(
+                original_frame,
+                f"FPS: {self.current_fps:.1f}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 255, 0),
+                2
+            )
+
+            # Dodajemy informacje o rozpoznanych ekspresji
+            if self.debug:
+                smile_value = self.last_expression_values.get("smile", 0.5)
+                mouth_open = self.last_expression_values.get("mouth_open", 0.0)
+
+                # Określamy stan nastroju na podstawie wartości smile
+                mood = "neutral"
+                if smile_value > 0.6:
+                    mood = "happy"
+                elif smile_value < 0.4:
+                    mood = "sad"
+
+                # Dodajemy informacje o ekspresji
+                expression_text = f"Smile: {smile_value:.2f} ({mood})"
+                cv2.putText(
+                    original_frame,
+                    expression_text,
+                    (10, 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2
                 )
 
-                # Dodatkowe informacje
-                sitting_text = "Siedzi" if self.posture_analyzer.is_sitting else "Stoi"
+                mouth_text = f"Mouth open: {mouth_open:.2f}"
                 cv2.putText(
-                    preview,
-                    sitting_text,
-                    (10, 30),
+                    original_frame,
+                    mouth_text,
+                    (10, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2
+                )
+
+            # Dodajemy informację o stanie krzesła
+            chair_text = "Krzeslo: ON" if self.show_chair else "Krzeslo: OFF (klawisz 'c')"
+            cv2.putText(
+                original_frame,
+                chair_text,
+                (10, self.height - 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+
+            # Dodajemy informację o stanie wizualizacji siatki twarzy
+            mesh_text = "Face mesh: ON (klawisz 'm')" if self.show_face_mesh else "Face mesh: OFF (klawisz 'm')"
+            cv2.putText(
+                original_frame,
+                mesh_text,
+                (10, self.height - 80),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+
+            # Dodajemy informację o trybie debugowania
+            debug_text = "Debug: ON (klawisz 'd')" if self.debug else "Debug: OFF (klawisz 'd')"
+            cv2.putText(
+                original_frame,
+                debug_text,
+                (10, self.height - 110),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+
+            # Tryb pauzy
+            if self.paused:
+                cv2.putText(
+                    original_frame,
+                    "PAUZA (klawisz 'p')",
+                    (self.width // 2 - 100, 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1.0,
-                    (0, 255, 0),
+                    (0, 0, 255),
                     2
                 )
 
-            # Jeśli mamy dane twarzy, wizualizujemy punkty charakterystyczne twarzy (nowy kod)
-            if face_data is not None and "has_face" in face_data and face_data["has_face"]:
-                if "multi_face_landmarks" in face_data and face_data["multi_face_landmarks"] is not None:
-                    # Rysujemy uproszczoną siatkę twarzy
-                    # Używamy tylko kontury, aby nie zaciemniać obrazu
-                    preview = self.face_detector.draw_face_mesh(
-                        preview,
-                        face_data["multi_face_landmarks"],
-                        draw_tesselation=False,  # Nie rysuj pełnej siatki
-                        draw_contours=True,  # Rysuj kontury (oczy, usta)
-                        draw_irises=True  # Rysuj tęczówki (jeśli dostępne)
-                    )
-
-                    # Dodajemy informacje o wyrażeniach twarzy
-                    if "expressions" in face_data:
-                        exp = face_data["expressions"]
-                        exp_text = f"Usmiech: {exp.get('smile', 0):.2f} Usta: {exp.get('mouth_open', 0):.2f}"
-                        cv2.putText(
-                            preview,
-                            exp_text,
-                            (10, 60),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (0, 255, 0),
-                            1
-                        )
-
-            # Wyświetlamy FPS
-            cv2.putText(
-                preview,
-                f"FPS: {self.current_fps:.1f}",
-                (10, self.height - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                1
-            )
-
-            # Status wirtualnej kamery
-            vcam_status = "Virtual Camera: "
-            if hasattr(self.virtual_camera, 'is_initialized') and self.virtual_camera.is_initialized:
-                vcam_status += "ACTIVE"
-                vcam_color = (0, 255, 0)  # Zielony
-            elif hasattr(self.virtual_camera, 'initialization_failed') and self.virtual_camera.initialization_failed:
-                vcam_status += "FAILED (press 'r' to reset)"
-                vcam_color = (0, 0, 255)  # Czerwony
-            else:
-                vcam_status += "INACTIVE (press 'r' to initialize)"
-                vcam_color = (0, 165, 255)  # Pomarańczowy
-
-            cv2.putText(
-                preview,
-                vcam_status,
-                (10, self.height - 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                vcam_color,
-                1
-            )
-
-            # Wyświetlamy status adaptacyjnego oświetlenia
-            if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
-                adaptive_text = f"Adaptacyjne oswietlenie: {'ON' if self.adaptive_lighting else 'OFF'} (klawisz 'l')"
-                cv2.putText(
-                    preview,
-                    adaptive_text,
-                    (10, self.height - 50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 0),
-                    1
-                )
-
-            # Wyświetlamy status FaceMesh (nowy kod)
-            face_mesh_status = f"FaceMesh: {'ON' if self.use_face_mesh else 'OFF'} (klawisz 'm')"
-            cv2.putText(
-                preview,
-                face_mesh_status,
-                (10, self.height - 70),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0) if self.use_face_mesh else (0, 0, 255),
-                1
-            )
-
-            # Status pauzy - POPRAWKA: Używamy ASCII zamiast polskich znaków
-            if self.paused:
-                # POPRAWKA: Usunięto polskie znaki, które powodowały problemy z wyświetlaniem
-                pause_text = "PAUZA (nacisnij 'p' aby wznowic)"
-                cv2.putText(
-                    preview,
-                    pause_text,
-                    (self.width // 2 - 150, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 0, 255),  # Czerwony
-                    2
-                )
-
-            # Klawisze sterujące
-            controls_text = "Controls: q/ESC=exit, p=pause, r=reset vcam, t=test, d=debug, l=lighting, m=facemesh"
-            cv2.putText(
-                preview,
-                controls_text,
-                (10, self.height - 90),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                (255, 255, 255),
-                1
-            )
-
-            # Wyświetlamy podgląd oryginalnego obrazu
-            cv2.imshow("Podglad kamery", preview)
+            cv2.imshow("Podgląd", original_frame)
 
             # Jeśli mamy stick figure, wyświetlamy go również
             if stick_figure is not None:
-                # Dodajemy informację o klawiszach do obrazu stick figure
+                # Dodajemy informacje na ekranie stick figure
                 cv2.putText(
                     stick_figure,
-                    vcam_status,
-                    (10, self.height - 20),
+                    f"FPS: {self.current_fps:.1f}",
+                    (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (100, 100, 100) if self.virtual_camera.is_initialized else (50, 50, 200),
+                    0.7,
+                    (100, 100, 100),
                     1
                 )
 
-                # POPRAWKA: Używamy ASCII zamiast polskich znaków w stick figure również
                 if self.paused:
                     cv2.putText(
                         stick_figure,
                         "PAUZA",
-                        (self.width // 2 - 50, 30),
+                        (self.width // 2 - 50, 50),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8,
-                        (100, 100, 150),  # Przyciemniony czerwony dla stick figure
+                        1.0,
+                        (100, 100, 100),
                         2
                     )
 
                 cv2.imshow("Stick Figure", stick_figure)
 
         except Exception as e:
-            self.logger.error(
-                "Main",
-                f"Błąd podczas wyświetlania podglądu: {str(e)}",
-                log_type="CONFIG"
-            )
+            print(f"Błąd podczas wyświetlania podglądu: {str(e)}")
 
-    def _handle_keys(self) -> None:
+    def _handle_keys(self):
         """
-        Obsługuje wciśnięcia klawiszy do sterowania aplikacją.
+        Obsługuje wciśnięcia klawiszy.
         """
-        # Zwiększono czas oczekiwania w trybie pauzy dla lepszej responsywności,
-        # W trybie normalnym zostawiamy 1ms, w trybie pauzy zwiększamy do 10ms
         wait_time = 10 if self.paused else 1
         key = cv2.waitKey(wait_time) & 0xFF
 
         if key == 27 or key == ord('q'):  # ESC lub q - wyjście
             self.running = False
-            self.logger.info("Main", "Wyjście z aplikacji (klawisz q/ESC)", log_type="CONFIG")
+            print("Wyjście z aplikacji")
 
         elif key == ord('p'):  # p - pauza/wznowienie
             self.paused = not self.paused
             status = "Wstrzymano" if self.paused else "Wznowiono"
-            self.logger.info(
-                "Main",
-                f"{status} przetwarzanie (klawisz p)",
-                log_type="CONFIG"
-            )
-
-            # Jeśli wznawiamy po pauzie, wyczyść bufor klawiatury OpenCV
-            # aby nie przetwarzać klawiszy naciśniętych podczas pauzy
-            if not self.paused:
-                cv2.waitKey(1)
-
-        elif key == ord('d'):  # d - przełączenie trybu debug
-            self.debug = not self.debug
-            self.logger.info(
-                "Main",
-                f"Tryb debug {'włączony' if self.debug else 'wyłączony'} (klawisz d)",
-                log_type="CONFIG"
-            )
-
-            # Aktualizacja poziomu logowania
-            for handler in self.logger.logger.handlers:
-                if isinstance(handler, type(self.logger.logger.handlers[0])):  # Console handler
-                    handler.setLevel(logging.DEBUG if self.debug else logging.INFO)
+            print(f"{status} przetwarzanie")
 
         elif key == ord('f'):  # f - przełączenie odbicia poziomego
             self.flip_camera = not self.flip_camera
-            self.logger.info(
-                "Main",
-                f"Odbicie poziome {'włączone' if self.flip_camera else 'wyłączone'} (klawisz f)",
-                log_type="CONFIG"
-            )
+            print(f"Odbicie poziome: {'włączone' if self.flip_camera else 'wyłączone'}")
 
-        elif key == ord('t'):  # t - wysłanie wzoru testowego
-            success = self.virtual_camera.send_test_pattern()
-            self.logger.info(
-                "Main",
-                f"Wysłano wzór testowy (klawisz t) - {'sukces' if success else 'niepowodzenie'}",
-                log_type="VIRTUAL_CAM"
-            )
+        elif key == ord('c'):  # c - włączenie/wyłączenie krzesła
+            self.show_chair = not self.show_chair
+            print(f"Krzesło: {'włączone' if self.show_chair else 'wyłączone'}")
 
-        elif key == ord('r'):  # r - reset wirtualnej kamery
-            self.logger.info("Main", "Resetowanie wirtualnej kamery (klawisz r)", log_type="VIRTUAL_CAM")
-            if self.virtual_camera.reset() and self.virtual_camera.initialize():
-                self.logger.info("Main", "Reset wirtualnej kamery zakończony powodzeniem", log_type="VIRTUAL_CAM")
-                self.virtual_camera.send_test_pattern()
-            else:
-                self.logger.warning("Main", "Reset wirtualnej kamery nie powiódł się", log_type="VIRTUAL_CAM")
+        elif key == ord('m'):  # m - włączenie/wyłączenie wizualizacji siatki twarzy
+            self.show_face_mesh = not self.show_face_mesh
+            print(f"Wizualizacja siatki twarzy: {'włączona' if self.show_face_mesh else 'wyłączona'}")
 
-        elif key == ord('l'):  # l - przełączenie adaptacyjnego oświetlenia
-            # Sprawdzenie czy lighting_manager jest zainicjowany
-            if not hasattr(self, 'lighting_manager') or self.lighting_manager is None:
-                # Inicjalizuj manager oświetlenia podczas pierwszego włączenia
-                self.lighting_manager = AdaptiveLightingManager(
-                    adaptation_speed=0.01,  # Domyślna wartość
-                    smoothing_window=int(self.fps),  # 1 sekunda jako okno wygładzania
-                    sampling_interval=3,  # Analizuj co 3 klatkę dla oszczędności CPU
-                    logger=self.logger
-                )
-                self.logger.info(
-                    "Main",
-                    "Utworzono manager adaptacyjnego oświetlenia",
-                    log_type="LIGHTING"
-                )
+        elif key == ord('d'):  # d - włączenie/wyłączenie trybu debugowania
+            self.debug = not self.debug
+            print(f"Tryb debugowania: {'włączony' if self.debug else 'wyłączony'}")
 
-            # Przełącz stan
-            self.adaptive_lighting = not self.adaptive_lighting
-            self.logger.info(
-                "Main",
-                f"Adaptacyjne oświetlenie {'włączone' if self.adaptive_lighting else 'wyłączone'} (klawisz l)",
-                log_type="LIGHTING"
-            )
+        elif key == ord('s'):  # s - zmiana nastroju
+            moods = ["happy", "neutral", "sad", "surprised", "wink"]
+            current_mood = self.renderer.mood
 
-            # Jeśli wyłączono adaptacyjne oświetlenie, przywróć domyślne kolory
-            if not self.adaptive_lighting:
-                self.stick_figure_renderer.set_colors(
-                    bg_color=(255, 255, 255),  # Białe tło
-                    figure_color=(0, 0, 0)  # Czarny kontur
-                )
+            # Znajdź obecny nastrój na liście i przejdź do następnego
+            try:
+                idx = moods.index(current_mood)
+                new_idx = (idx + 1) % len(moods)
+                new_mood = moods[new_idx]
+            except ValueError:
+                new_mood = "neutral"  # Domyślny nastrój jeśli obecny nie jest na liście
 
-        elif key == ord('m'):  # m - przełączanie FaceMesh (nowy kod)
-            # Przełączamy stan FaceMesh
-            self.use_face_mesh = not self.use_face_mesh
+            self.renderer.set_mood(new_mood)
+            print(f"Zmieniono nastrój na: {new_mood}")
 
-            if hasattr(self, 'stick_figure_renderer'):
-                # Aktualizujemy ustawienie w rendererze
-                self.stick_figure_renderer.set_use_face_mesh(self.use_face_mesh)
-
-            self.logger.info(
-                "Main",
-                f"FaceMesh {'włączony' if self.use_face_mesh else 'wyłączony'} (klawisz m)",
-                log_type="FACE"
-            )
-
-            # Jeśli włączamy FaceMesh, a detektor nie jest zainicjowany, tworzymy go
-            if self.use_face_mesh and (not hasattr(self, 'face_detector') or self.face_detector is None):
-                self.logger.info("Main", "Inicjalizacja detektora twarzy FaceMesh", log_type="FACE")
-                self.face_detector = FaceMeshDetector(
-                    max_num_faces=1,
-                    min_detection_confidence=0.6,
-                    min_tracking_confidence=0.6,
-                    refine_landmarks=True,
-                    logger=self.logger
-                )
-
-        elif key == ord('1'):  # 1 - niski poziom szczegółowości twarzy
-            if hasattr(self, 'stick_figure_renderer'):
-                self.stick_figure_renderer.set_face_detail_level("low")
-                self.logger.info("Main", "Ustawiono niski poziom szczegółowości twarzy (klawisz 1)", log_type="FACE")
-
-        elif key == ord('2'):  # 2 - średni poziom szczegółowości twarzy
-            if hasattr(self, 'stick_figure_renderer'):
-                self.stick_figure_renderer.set_face_detail_level("medium")
-                self.logger.info("Main", "Ustawiono średni poziom szczegółowości twarzy (klawisz 2)", log_type="FACE")
-
-        elif key == ord('3'):  # 3 - wysoki poziom szczegółowości twarzy
-            if hasattr(self, 'stick_figure_renderer'):
-                self.stick_figure_renderer.set_face_detail_level("high")
-                self.logger.info("Main", "Ustawiono wysoki poziom szczegółowości twarzy (klawisz 3)", log_type="FACE")
-
-        elif ord('4') <= key <= ord('8'):  # Klawisze 4-8 - różne wyrazy twarzy
-            # Mapowanie klawiszy na nastroje
-            moods = {
-                ord('4'): "happy",  # 4 - szczęśliwy
-                ord('5'): "sad",  # 5 - smutny
-                ord('6'): "surprised",  # 6 - zaskoczony
-                ord('7'): "neutral",  # 7 - neutralny
-                ord('8'): "wink"  # 8 - mrugnięcie
-            }
-
-            if hasattr(self, 'stick_figure_renderer'):
-                mood = moods.get(key)
-                self.stick_figure_renderer.set_mood(mood)
-                self.logger.info(
-                    "Main",
-                    f"Ustawiono nastrój twarzy: {mood} (klawisz {chr(key)})",
-                    log_type="FACE"
-                )
-
-    def _cleanup(self) -> None:
+    def _cleanup(self):
         """
-        Zwalnia zasoby i zamyka połączenia przed zakończeniem aplikacji.
+        Zwalnia zasoby przed zakończeniem.
         """
-        self.logger.info("Main", "Zamykanie zasobów...", log_type="CONFIG")
+        print("Zamykanie zasobów...")
 
         try:
-            # Zamykanie podglądu
-            cv2.destroyAllWindows()
-
             # Zamykanie kamery
             if hasattr(self, 'camera'):
-                self.camera.close()
+                self.camera.release()
 
             # Zamykanie wirtualnej kamery
-            if hasattr(self, 'virtual_camera'):
+            if hasattr(self, 'virtual_camera_ready') and self.virtual_camera_ready:
                 self.virtual_camera.close()
 
-            # Zamykanie detektora pozy
-            if hasattr(self, 'pose_detector'):
-                self.pose_detector.close()
+            # Zamykanie MediaPipe Face Mesh
+            if hasattr(self, 'face_mesh'):
+                self.face_mesh.close()
 
-            # Zamykanie detektora twarzy (nowy kod)
-            if hasattr(self, 'face_detector') and self.face_detector is not None:
-                self.face_detector.close()
+            # Zamykanie okien OpenCV
+            cv2.destroyAllWindows()
 
-            # Resetowanie managera adaptacyjnego oświetlenia
-            if hasattr(self, 'lighting_manager') and self.lighting_manager is not None:
-                self.lighting_manager.reset()
-
-            self.logger.info("Main", "Wszystkie zasoby zamknięte pomyślnie", log_type="CONFIG")
+            print("Wszystkie zasoby zamknięte pomyślnie")
 
         except Exception as e:
-            self.logger.error(
-                "Main",
-                f"Błąd podczas zwalniania zasobów: {str(e)}",
-                log_type="CONFIG"
-            )
+            print(f"Błąd podczas zwalniania zasobów: {str(e)}")
 
 
 def parse_arguments():
     """
     Parsuje argumenty linii poleceń.
-
-    Returns:
-        argparse.Namespace: Sparsowane argumenty
     """
-    parser = argparse.ArgumentParser(description="Stick Figure Webcam - zamień siebie w animowaną postać stick figure")
+    parser = argparse.ArgumentParser(description="Stick Figure Webcam - zamień siebie w animowaną postać patyczaka")
 
     parser.add_argument("-c", "--camera", type=int, default=0,
                         help="Numer identyfikacyjny kamery (domyślnie 0)")
@@ -834,141 +566,56 @@ def parse_arguments():
                         help="Docelowa liczba klatek na sekundę (domyślnie 30)")
     parser.add_argument("-d", "--debug", action="store_true",
                         help="Włącza tryb debugowania")
-    parser.add_argument("-l", "--log-level", type=str, default="INFO",
-                        choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-                        help="Poziom logowania (domyślnie INFO)")
-    parser.add_argument("--log-file", type=str, default=None,
-                        help="Ścieżka do pliku logów (domyślnie logs/stick_figure_webcam_YYYYMMDD_HHMMSS.log)")
     parser.add_argument("--no-preview", action="store_true",
                         help="Wyłącza podgląd obrazu")
     parser.add_argument("--no-flip", action="store_true",
                         help="Wyłącza automatyczne odbicie poziome obrazu")
-    parser.add_argument("--skip-checks", action="store_true",
-                        help="Pomija sprawdzanie wymagań systemowych")
-    # Parametry dla adaptacyjnego oświetlenia
-    parser.add_argument("--adaptive-lighting", action="store_true",
-                        help="Włącza adaptacyjne dostosowywanie kolorów do oświetlenia otoczenia")
-    parser.add_argument("--adaptation-speed", type=float, default=0.01,
-                        help="Szybkość adaptacji kolorów (0.001-0.1, domyślnie 0.01)")
-    # Nowe parametry dla FaceMesh
+    parser.add_argument("--no-virtual-camera", action="store_true",
+                        help="Wyłącza wirtualną kamerę")
+    parser.add_argument("--chair", action="store_true",
+                        help="Włącza pokazywanie krzesła")
     parser.add_argument("--no-face-mesh", action="store_true",
-                        help="Wyłącza detekcję twarzy z MediaPipe FaceMesh")
-    parser.add_argument("--face-detail", type=str, default="medium",
-                        choices=["low", "medium", "high"],
-                        help="Poziom szczegółowości twarzy (low, medium, high)")
+                        help="Wyłącza wizualizację siatki twarzy")
 
     return parser.parse_args()
 
 
 def main():
     """
-    Główna funkcja uruchamiająca aplikację.
+    Główna funkcja programu.
     """
-    # Ignorowanie ostrzeżeń NumPy w trybie produkcyjnym
+    # Ignorowanie ostrzeżeń
     if not sys.warnoptions:
         import warnings
         warnings.simplefilter("ignore")
 
-    # Parsowanie argumentów linii poleceń
+    # Parsowanie argumentów
     args = parse_arguments()
 
-    # Tworzymy katalog logs bezwarunkowo, jeśli nie istnieje
-    try:
-        if not os.path.exists("logs"):
-            os.makedirs("logs", exist_ok=True)
-            print(f"Utworzono katalog logów: {os.path.abspath('logs')}")
-    except Exception as e:
-        print(f"UWAGA: Nie można utworzyć katalogu logów: {e}")
-
-    # Konfiguruję ścieżkę pliku logów
-    log_file = args.log_file
-    if log_file is None:
-        # Generujemy domyślną nazwę pliku logów zawierającą datę i czas
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        log_file = os.path.join("logs", f"stick_figure_webcam_{timestamp}.log")
-        print(f"Używam domyślnego pliku logów: {log_file}")
-
-    log_level = args.log_level
-    debug = args.debug
-
-    # Inicjalizacja loggera z explicit ustawionym plikiem logów
-    try:
-        logger = CustomLogger(
-            log_file=log_file,  # Zawsze przekazujemy ścieżkę pliku
-            console_level="DEBUG" if debug else log_level,
-            file_level="DEBUG",  # Zawsze zapisujemy szczegółowe logi do pliku
-            verbose=debug  # Dodatkowe szczegóły dla trybu debug
-        )
-        logger.info("Main", f"Inicjalizacja logowania do pliku: {log_file}", log_type="CONFIG")
-    except Exception as e:
-        print(f"BŁĄD: Nie można zainicjalizować loggera: {e}")
-        # Fallback do podstawowego loggera, jeśli CustomLogger zawiedzie
-        import logging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger("fallback")
-        logger.error(f"Nie można zainicjalizować CustomLogger: {e}")
-
-    logger.info("Main", "Uruchamianie Stick Figure Webcam z obsługą Face Mesh", log_type="CONFIG")
-
-    # Sprawdzenie wymagań systemowych
-    if not args.skip_checks:
-        logger.info("Main", "Sprawdzanie wymagań systemowych...", log_type="CONFIG")
-        all_requirements_met, system_check_results = check_system_requirements(logger)
-
-        if not all_requirements_met:
-            logger.warning(
-                "Main",
-                "Nie wszystkie wymagania systemowe są spełnione. Wyświetlanie dialogu konfiguracyjnego.",
-                log_type="CONFIG"
-            )
-
-            # Zmienne do obsługi wywołań zwrotnych dialogu
-            app_started = [False]  # Lista jako hack, żeby móc modyfikować zmienną w callbacku
-
-            def start_app():
-                app_started[0] = True
-
-            # Wyświetlenie dialogu konfiguracyjnego
-            show_setup_dialog(
-                system_check_results,
-                on_continue=start_app,
-                on_exit=lambda: sys.exit(0),
-                logger=logger
-            )
-
-            # Jeśli użytkownik nie zdecydował się kontynuować, kończymy
-            if not app_started[0]:
-                logger.info("Main", "Kończenie działania aplikacji", log_type="CONFIG")
-                return
+    # Sprawdzenie czy istnieje katalog logs
+    if not os.path.exists("logs"):
+        os.makedirs("logs", exist_ok=True)
 
     # Tworzenie i uruchamianie aplikacji
     try:
-        # Konfiguracja aplikacji z uwzględnieniem FaceMesh
-        use_face_mesh = not args.no_face_mesh
-        face_detail_level = args.face_detail
-
         app = StickFigureWebcam(
             camera_id=args.camera,
             width=args.width,
             height=args.height,
             fps=args.fps,
-            debug=debug,
-            log_level=log_level,
-            log_file=log_file,
+            debug=args.debug,
             show_preview=not args.no_preview,
             flip_camera=not args.no_flip,
-            adaptive_lighting=args.adaptive_lighting,
-            adaptation_speed=args.adaptation_speed,
-            use_face_mesh=use_face_mesh,
-            face_detail_level=face_detail_level,
-            logger=logger
+            use_virtual_camera=not args.no_virtual_camera,
+            show_face_mesh=not args.no_face_mesh
         )
+
+        # Ustawienie opcji krzesła
+        app.show_chair = args.chair
 
         app.run()
     except Exception as e:
-        logger.critical("Main", f"Krytyczny błąd aplikacji: {str(e)}", log_type="CONFIG")
-        print(f"\nKrytyczny błąd aplikacji: {str(e)}")
-        print("Sprawdź logi, aby uzyskać więcej informacji.")
+        print(f"Krytyczny błąd aplikacji: {str(e)}")
         sys.exit(1)
 
 

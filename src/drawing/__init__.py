@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# drawing/__init__.py
 
-from src.drawing.stick_figure import StickFigureRenderer
+"""
+Moduł stick_figure - prosta implementacja renderowania stick figure (patyczaka)
+skupiona tylko na popiersu, z prostą mimiką twarzy.
+"""
 
-__all__ = ['StickFigureRenderer']
+from .face_renderer import SimpleFaceRenderer
+from .stick_figure_renderer import StickFigureRenderer
+
+__all__ = ['StickFigureRenderer', 'SimpleFaceRenderer']

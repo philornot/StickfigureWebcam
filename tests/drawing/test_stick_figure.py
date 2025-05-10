@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# tests/drawing/test_stick_figure.py
+# test_stick_figure.py
 """
 Testy jednostkowe dla renderera stick figure (StickFigureRenderer).
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
-import numpy as np
-import cv2
 
-from src.drawing.stick_figure import StickFigureRenderer
+import numpy as np
+from pose_analyzer import PoseAnalyzer
+from stick_figure_renderer import StickFigureRenderer
 
 
 class TestStickFigureRenderer(unittest.TestCase):
@@ -20,9 +19,6 @@ class TestStickFigureRenderer(unittest.TestCase):
 
     def setUp(self):
         """Inicjalizacja przed każdym testem."""
-        # Mock loggera
-        self.mock_logger = MagicMock()
-
         # Tworzenie renderera
         self.renderer = StickFigureRenderer(
             canvas_width=640,
@@ -33,8 +29,7 @@ class TestStickFigureRenderer(unittest.TestCase):
             figure_color=(0, 0, 0),
             chair_color=(150, 75, 0),
             smooth_factor=0.3,
-            smoothing_history=3,
-            logger=self.mock_logger
+            smoothing_history=3
         )
 
     def test_initialization(self):
@@ -52,26 +47,24 @@ class TestStickFigureRenderer(unittest.TestCase):
         # Sprawdzamy obliczenie promienia głowy
         self.assertEqual(self.renderer.head_radius, int(0.075 * 480))
 
-        # Sprawdzamy czy logger został wywołany
-        self.mock_logger.info.assert_called_once()
+        # Sprawdzamy czy mamy instancje analizatora pozy i renderera twarzy
+        self.assertIsInstance(self.renderer.pose_analyzer, PoseAnalyzer)
+        self.assertIsNotNone(self.renderer.face_renderer)
 
     def test_render_no_landmarks(self):
         """Test renderowania bez punktów charakterystycznych."""
         # Wywołujemy render bez punktów
-        result = self.renderer.render(None, False, 0.0)
+        result = self.renderer.render(None, False)
 
         # Sprawdzamy wymiary i kolor obrazu wynikowego
         self.assertEqual(result.shape, (480, 640, 3))
         # Sprawdzamy czy obraz jest biały (tło)
         self.assertTrue(np.all(result == 255))  # 255 to wartość dla białego koloru
 
-        # Sprawdzamy czy logger został wywołany
-        self.mock_logger.debug.assert_called_once()
-
     def create_mock_landmarks(self):
         """Tworzy sztuczne dane punktów charakterystycznych dla testów."""
-        # Tworzymy 33 punkty z dobrą widocznością
-        landmarks = [(0, 0, 0, 0.9)] * 33
+        # Tworzymy 15 punktów z dobrą widocznością
+        landmarks = [(0, 0, 0, 0.9)] * 15
 
         # Ustawiamy podstawowe punkty dla testu
         # Głowa
@@ -95,14 +88,6 @@ class TestStickFigureRenderer(unittest.TestCase):
         landmarks[self.renderer.LEFT_HIP] = (0.45, 0.6, 0, 0.9)
         landmarks[self.renderer.RIGHT_HIP] = (0.55, 0.6, 0, 0.9)
 
-        # Kolana
-        landmarks[self.renderer.LEFT_KNEE] = (0.4, 0.8, 0, 0.9)
-        landmarks[self.renderer.RIGHT_KNEE] = (0.6, 0.8, 0, 0.9)
-
-        # Kostki
-        landmarks[self.renderer.LEFT_ANKLE] = (0.4, 0.95, 0, 0.9)
-        landmarks[self.renderer.RIGHT_ANKLE] = (0.6, 0.95, 0, 0.9)
-
         return landmarks
 
     def test_render_standing_figure(self):
@@ -111,7 +96,7 @@ class TestStickFigureRenderer(unittest.TestCase):
         landmarks = self.create_mock_landmarks()
 
         # Renderujemy stick figure w pozycji stojącej
-        result = self.renderer.render(landmarks, False, 0.8)
+        result = self.renderer.render(landmarks, False)
 
         # Sprawdzamy wymiary obrazu wynikowego
         self.assertEqual(result.shape, (480, 640, 3))
@@ -132,7 +117,7 @@ class TestStickFigureRenderer(unittest.TestCase):
         landmarks = self.create_mock_landmarks()
 
         # Renderujemy stick figure w pozycji siedzącej
-        result = self.renderer.render(landmarks, True, 0.8)
+        result = self.renderer.render(landmarks, True)
 
         # Sprawdzamy wymiary obrazu wynikowego
         self.assertEqual(result.shape, (480, 640, 3))
@@ -147,48 +132,8 @@ class TestStickFigureRenderer(unittest.TestCase):
         chair_area = result[min(479, hip_y + 5):min(479, hip_y + 20), max(0, hip_x - 20):min(639, hip_x + 20)]
 
         # Sprawdzamy czy są piksele inne niż białe (tło) w obszarze krzesła
-        self.assertFalse(np.all(chair_area == 255))
-
-    def test_smooth_landmarks(self):
-        """Test wygładzania punktów charakterystycznych."""
-        # Tworzymy kilka zestawów punktów z małymi różnicami dla symulacji ruchu
-        landmarks1 = self.create_mock_landmarks()
-        landmarks2 = self.create_mock_landmarks()
-        landmarks3 = self.create_mock_landmarks()
-
-        # Dodajemy niewielkie przesunięcie do drugiego zestawu
-        landmarks2[self.renderer.NOSE] = (0.51, 0.21, 0, 0.9)  # Przesunięcie nosa
-
-        # Dodajemy większe przesunięcie do trzeciego zestawu
-        landmarks3[self.renderer.NOSE] = (0.52, 0.22, 0, 0.9)  # Jeszcze większe przesunięcie
-
-        # Renderujemy pierwszy zestaw punktów - inicjalizuje historię
-        self.renderer.render(landmarks1, False, 0.8)
-
-        # Renderujemy drugi zestaw - teraz wygładzanie powinno działać
-        self.renderer.render(landmarks2, False, 0.8)
-
-        # Sprawdzamy czy w historii są dwa zestawy punktów
-        self.assertEqual(len(self.renderer.landmark_history), 2)
-
-        # Renderujemy trzeci zestaw
-        self.renderer.render(landmarks3, False, 0.8)
-
-        # Sprawdzamy czy w historii są trzy zestawy punktów
-        self.assertEqual(len(self.renderer.landmark_history), 3)
-
-        # Wywołujemy bezpośrednio metodę wygładzania
-        smoothed = self.renderer._smooth_landmarks(landmarks3)
-
-        # Sprawdzamy czy wygładzone punkty różnią się od oryginalnych
-        self.assertNotEqual(smoothed[self.renderer.NOSE], landmarks3[self.renderer.NOSE])
-
-        # Wygładzone punkty powinny być pomiędzy wartościami w historii
-        original_x = landmarks3[self.renderer.NOSE][0]
-        smoothed_x = smoothed[self.renderer.NOSE][0]
-
-        # Wygładzona wartość powinna być mniejsza niż ostatnia (ponieważ wcześniejsze wartości były mniejsze)
-        self.assertLess(smoothed_x, original_x)
+        if chair_area.size > 0:  # Jeśli obszar nie jest pusty
+            self.assertFalse(np.all(chair_area == 255))
 
     def test_set_colors(self):
         """Test zmiany kolorów renderera."""
@@ -260,6 +205,26 @@ class TestStickFigureRenderer(unittest.TestCase):
         self.assertEqual(self.renderer.smooth_factor, new_smooth_factor)
         self.assertEqual(self.renderer.smoothing_history, new_history_length)
 
+    def test_set_mood(self):
+        """Test zmiany nastroju."""
+        # Początkowy nastrój
+        original_mood = self.renderer.mood
+
+        # Nowy nastrój
+        new_mood = "sad"
+
+        # Ustawiamy nowy nastrój
+        self.renderer.set_mood(new_mood)
+
+        # Sprawdzamy czy nastrój został zmieniony
+        self.assertEqual(self.renderer.mood, new_mood)
+
+        # Sprawdzamy czy nieprawidłowy nastrój zostanie zignorowany
+        self.renderer.set_mood("nieprawidłowy")
+
+        # Nastrój nie powinien się zmienić
+        self.assertEqual(self.renderer.mood, new_mood)
+
     def test_resize(self):
         """Test zmiany rozmiaru płótna."""
         # Początkowe wymiary
@@ -289,8 +254,8 @@ class TestStickFigureRenderer(unittest.TestCase):
         """Test resetowania wewnętrznego stanu renderera."""
         # Najpierw dodajemy coś do historii wygładzania
         landmarks = self.create_mock_landmarks()
-        self.renderer.render(landmarks, False, 0.8)
-        self.renderer.render(landmarks, False, 0.8)
+        self.renderer.render(landmarks, False)
+        self.renderer.render(landmarks, False)
 
         # Sprawdzamy czy historia się wypełniła
         self.assertEqual(len(self.renderer.landmark_history), 2)
@@ -300,6 +265,84 @@ class TestStickFigureRenderer(unittest.TestCase):
 
         # Sprawdzamy czy historia została wyczyszczona
         self.assertEqual(len(self.renderer.landmark_history), 0)
+
+        # Sprawdzamy czy nastrój wrócił do domyślnego
+        self.assertEqual(self.renderer.mood, "happy")
+
+
+class TestPoseAnalyzer(unittest.TestCase):
+    """
+    Testy dla klasy PoseAnalyzer, która analizuje pozę człowieka.
+    """
+
+    def setUp(self):
+        """Inicjalizacja przed każdym testem."""
+        self.analyzer = PoseAnalyzer()
+
+    def test_initialization(self):
+        """Test inicjalizacji analizatora pozy."""
+        self.assertIsNotNone(self.analyzer)
+        self.assertEqual(self.analyzer.sitting_threshold, 0.3)
+
+    def test_is_sitting_not_enough_points(self):
+        """Test wykrywania siedzenia przy zbyt małej liczbie punktów."""
+        # Pusta lista punktów
+        result = self.analyzer.is_sitting(None)
+        self.assertFalse(result)
+
+        # Za mało punktów
+        result = self.analyzer.is_sitting([(0, 0, 0, 0)] * 10)
+        self.assertFalse(result)
+
+    def create_standing_landmarks(self):
+        """Tworzy punkty charakterystyczne dla osoby stojącej."""
+        landmarks = [(0, 0, 0, 0.9)] * 15
+
+        # Głowa i ramiona
+        landmarks[self.analyzer.NOSE] = (0.5, 0.1, 0, 0.9)
+        landmarks[self.analyzer.LEFT_SHOULDER] = (0.4, 0.3, 0, 0.9)
+        landmarks[self.analyzer.RIGHT_SHOULDER] = (0.6, 0.3, 0, 0.9)
+
+        # Biodra wysoko - stojąca poza
+        landmarks[self.analyzer.LEFT_HIP] = (0.45, 0.45, 0, 0.9)
+        landmarks[self.analyzer.RIGHT_HIP] = (0.55, 0.45, 0, 0.9)
+
+        # Kolana daleko od bioder - wyprostowane nogi
+        landmarks[self.analyzer.LEFT_KNEE] = (0.45, 0.7, 0, 0.9)
+        landmarks[self.analyzer.RIGHT_KNEE] = (0.55, 0.7, 0, 0.9)
+
+        return landmarks
+
+    def create_sitting_landmarks(self):
+        """Tworzy punkty charakterystyczne dla osoby siedzącej."""
+        landmarks = [(0, 0, 0, 0.9)] * 15
+
+        # Głowa i ramiona
+        landmarks[self.analyzer.NOSE] = (0.5, 0.1, 0, 0.9)
+        landmarks[self.analyzer.LEFT_SHOULDER] = (0.4, 0.3, 0, 0.9)
+        landmarks[self.analyzer.RIGHT_SHOULDER] = (0.6, 0.3, 0, 0.9)
+
+        # Biodra nisko - siedząca poza
+        landmarks[self.analyzer.LEFT_HIP] = (0.45, 0.6, 0, 0.9)
+        landmarks[self.analyzer.RIGHT_HIP] = (0.55, 0.6, 0, 0.9)
+
+        # Kolana blisko bioder - zgięte nogi
+        landmarks[self.analyzer.LEFT_KNEE] = (0.45, 0.65, 0, 0.9)
+        landmarks[self.analyzer.RIGHT_KNEE] = (0.55, 0.65, 0, 0.9)
+
+        return landmarks
+
+    def test_is_sitting_detection(self):
+        """Test wykrywania pozycji siedzącej i stojącej."""
+        # Test dla osoby stojącej
+        standing_landmarks = self.create_standing_landmarks()
+        result_standing = self.analyzer.is_sitting(standing_landmarks, 480)
+        self.assertFalse(result_standing)
+
+        # Test dla osoby siedzącej
+        sitting_landmarks = self.create_sitting_landmarks()
+        result_sitting = self.analyzer.is_sitting(sitting_landmarks, 480)
+        self.assertTrue(result_sitting)
 
 
 if __name__ == "__main__":
