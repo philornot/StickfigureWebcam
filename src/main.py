@@ -23,7 +23,7 @@ from src.drawing.stick_figure_renderer import StickFigureRenderer
 # Importy z własnych modułów
 from src.utils.custom_logger import CustomLogger
 from src.utils.performance import PerformanceMonitor
-
+from src.utils.logging_config import setup_logger
 
 class StickFigureWebcam:
     """
@@ -62,12 +62,7 @@ class StickFigureWebcam:
             performance_log_interval (int): Co ile sekund logować statystyki wydajności
         """
         # Inicjalizacja loggera
-        self.logger = CustomLogger(
-            log_file=log_file,
-            console_level="INFO" if not debug else "DEBUG",
-            file_level="DEBUG",
-            verbose=debug
-        )
+        self.logger = setup_logger(CustomLogger, debug=debug)
 
         # Rejestracja obsługi sygnałów dla bezpiecznego zamykania
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -346,7 +341,10 @@ class StickFigureWebcam:
                             )
 
                 # 5. Renderowanie stick figure
-                output_image = self.renderer.render(face_data)
+                is_sitting = False
+                if face_data and "landmarks" in face_data and face_data["landmarks"]:
+                    is_sitting = self.renderer.pose_analyzer.is_sitting(face_data["landmarks"], self.height, self.width)
+                output_image = self.renderer.render(face_data, is_sitting)
 
                 # 6. Wysyłanie obrazu do wirtualnej kamery
                 if self.virtual_camera_ready:
@@ -510,7 +508,7 @@ class StickFigureWebcam:
             PINKY_MCP = 17  # Podstawa małego palca
 
             # Dodajemy informacje o rękach do danych
-            if not "hands_data" in face_data:
+            if "hands_data" not in face_data:
                 face_data["hands_data"] = {
                     "left_hand": None,
                     "right_hand": None
@@ -538,14 +536,17 @@ class StickFigureWebcam:
                 # Używamy pozycji nadgarstka i estymujemy łokieć w kierunku ciała
                 wrist_pos = hand_points[WRIST]
                 center_x = 0.5  # Środek ekranu w poziomie
+
                 # Obliczamy wektor od nadgarstka do środka ciała
                 vector_x = center_x - wrist_pos[0]
                 vector_y = 0.2 - wrist_pos[1]  # Zakładamy, że środek ciała jest wyżej niż nadgarstek
+
                 # Normalizujemy wektor
                 vector_len = (vector_x ** 2 + vector_y ** 2) ** 0.5
                 if vector_len > 0:
                     vector_x /= vector_len
                     vector_y /= vector_len
+
                 # Tworzymy punkt łokcia pomiędzy nadgarstkiem a ciałem
                 elbow_x = wrist_pos[0] + vector_x * 0.15
                 elbow_y = wrist_pos[1] + vector_y * 0.15
@@ -582,6 +583,13 @@ class StickFigureWebcam:
                 f"Błąd podczas przetwarzania punktów rąk: {str(e)}",
                 log_type="HANDS",
                 error={"error": str(e)}
+            )
+            # Dodajemy traceback dla lepszego debugowania
+            import traceback
+            self.logger.debug(
+                "Main",
+                f"Traceback: {traceback.format_exc()}",
+                log_type="HANDS"
             )
 
     def _show_preview(self, original_frame, stick_figure):

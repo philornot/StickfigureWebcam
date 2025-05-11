@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# drawing/pose_analyzer.py
+# src/drawing/pose_analyzer.py
 
 from typing import List, Tuple, Optional
 
@@ -13,12 +13,14 @@ class PoseAnalyzer:
 
     # Indeksy punktów z MediaPipe Pose
     NOSE = 0
-    LEFT_SHOULDER = 5
-    RIGHT_SHOULDER = 6
-    LEFT_HIP = 11
-    RIGHT_HIP = 12
-    LEFT_KNEE = 13
-    RIGHT_KNEE = 14
+    LEFT_SHOULDER = 11
+    RIGHT_SHOULDER = 12
+    LEFT_HIP = 23
+    RIGHT_HIP = 24
+    LEFT_KNEE = 25
+    RIGHT_KNEE = 26
+    LEFT_ANKLE = 27
+    RIGHT_ANKLE = 28
 
     def __init__(self, sitting_threshold: float = 0.3):
         """
@@ -29,195 +31,99 @@ class PoseAnalyzer:
                                      do wysokości ramion dla rozpoznania siedzenia
         """
         self.sitting_threshold = sitting_threshold
-        print(f"PoseAnalyzer zainicjalizowany (próg siedzenia: {sitting_threshold})")
 
     def is_sitting(
         self,
-        landmarks: List[Tuple[float, float, float, float]],
-        frame_height: Optional[int] = None
+        landmarks: Optional[List[Tuple[float, float, float, float]]],
+        frame_height: Optional[int] = None,
+        frame_width: Optional[int] = None
     ) -> bool:
         """
         Określa, czy osoba siedzi na podstawie punktów charakterystycznych.
 
         Args:
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów (x, y, z, visibility)
+            landmarks (Optional[List[Tuple[float, float, float, float]]]): Lista punktów (x, y, z, visibility)
             frame_height (Optional[int]): Wysokość klatki dla dodatkowej analizy
+            frame_width (Optional[int]): Szerokość klatki dla dodatkowej analizy
 
         Returns:
             bool: True jeśli osoba siedzi, False w przeciwnym przypadku
         """
-        if landmarks is None or len(landmarks) < 15:  # Potrzebujemy co najmniej punktów kolan
+        # Jeśli nie ma punktów charakterystycznych, zakładamy, że osoba stoi
+        if landmarks is None or len(landmarks) < 29:  # Potrzebujemy co najmniej punktów kostek (indeks 28)
             return False
 
         try:
-            # Pobieramy punkty do analizy
-            shoulders_y = self._get_shoulders_y(landmarks)
-            hips_y = self._get_hips_y(landmarks)
-            knees_y = self._get_knees_y(landmarks)
+            # Pobieramy pozycje kluczowych punktów
+            hips_visible = False
+            knees_visible = False
 
+            # Sprawdzamy widoczność bioder
+            left_hip_visible = len(landmarks) > self.LEFT_HIP and landmarks[self.LEFT_HIP][3] > 0.5
+            right_hip_visible = len(landmarks) > self.RIGHT_HIP and landmarks[self.RIGHT_HIP][3] > 0.5
+
+            if left_hip_visible or right_hip_visible:
+                hips_visible = True
+
+            # Sprawdzamy widoczność kolan
+            left_knee_visible = len(landmarks) > self.LEFT_KNEE and landmarks[self.LEFT_KNEE][3] > 0.5
+            right_knee_visible = len(landmarks) > self.RIGHT_KNEE and landmarks[self.RIGHT_KNEE][3] > 0.5
+
+            if left_knee_visible or right_knee_visible:
+                knees_visible = True
+
+            # Pobieramy pozycje punktów
+            # Sprawdzamy widoczność barków
+            shoulders_y = None
+            if len(landmarks) > self.LEFT_SHOULDER and landmarks[self.LEFT_SHOULDER][3] > 0.5:
+                shoulders_y = landmarks[self.LEFT_SHOULDER][1]
+            elif len(landmarks) > self.RIGHT_SHOULDER and landmarks[self.RIGHT_SHOULDER][3] > 0.5:
+                shoulders_y = landmarks[self.RIGHT_SHOULDER][1]
+
+            # Sprawdzamy pozycje bioder
+            hips_y = None
+            if left_hip_visible:
+                hips_y = landmarks[self.LEFT_HIP][1]
+            elif right_hip_visible:
+                hips_y = landmarks[self.RIGHT_HIP][1]
+
+            # Jeśli nie mamy tych podstawowych punktów, nie możemy określić pozy
             if shoulders_y is None or hips_y is None:
-                return False
+                return False  # Domyślnie zakładamy pozycję stojącą
 
-            # Podstawowa heurystyka siedzenia
-            # 1. Sprawdzamy czy biodra są blisko kolan (w pionie)
-            hip_knee_ratio = self._calculate_hip_knee_ratio(hips_y, knees_y)
+            # Główne kryterium: porównanie pozycji bioder do barków
+            # Gdy biodra są znacznie niżej niż barki, to prawdopodobnie osoba siedzi
+            hip_shoulder_ratio = hips_y - shoulders_y
 
-            # 2. Sprawdzamy czy biodra są niżej niż oczekiwana pozycja dla stania
-            # (biodra podczas siedzenia są zazwyczaj niżej w stosunku do ramion)
-            shoulder_hip_ratio = (hips_y - shoulders_y)
+            # Ustalamy próg siedzenia/stania
+            sitting_threshold = self.sitting_threshold
 
-            # 3. Sprawdzamy położenie bioder względem dolnej krawędzi kadru (jeśli podano wysokość)
-            bottom_proximity = self._calculate_bottom_proximity(hips_y, frame_height)
+            # Heurystyka:
+            # 1. Jeśli biodra są znacznie niżej niż barki, to prawdopodobnie osoba siedzi
+            is_sitting_by_position = hip_shoulder_ratio > sitting_threshold
 
-            # Kombinacja powyższych czynników dla precyzyjniejszej detekcji
-            if hip_knee_ratio < self.sitting_threshold:
-                # Biodra blisko kolan - prawdopodobnie siedzi
-                sitting_confidence = 0.8
-            else:
-                # Biodra daleko od kolan - prawdopodobnie stoi
-                sitting_confidence = 0.2
+            # 2. Jeśli kolana są widoczne i są blisko bioder (w pionie), to też prawdopodobnie siedzi
+            is_sitting_by_knees = False
+            if knees_visible and hips_visible:
+                knees_y = None
+                if left_knee_visible:
+                    knees_y = landmarks[self.LEFT_KNEE][1]
+                elif right_knee_visible:
+                    knees_y = landmarks[self.RIGHT_KNEE][1]
 
-            # Jeśli biodra są znacznie niżej niż ramiona, zwiększamy pewność siedzenia
-            if shoulder_hip_ratio > 0.3:
-                sitting_confidence += 0.15
+                if knees_y is not None:
+                    # Odległość między biodrami a kolanami
+                    hip_knee_distance = abs(knees_y - hips_y)
+                    if hip_knee_distance < 0.15:  # Bliska odległość wskazuje na siedzenie
+                        is_sitting_by_knees = True
 
-            # Jeśli biodra są blisko dolnej krawędzi kadru, zwiększamy pewność siedzenia
-            if bottom_proximity and bottom_proximity > 0.8:
-                sitting_confidence += 0.1
+            # 3. Sprawdzamy, czy kostki są widoczne - jeśli nie, to prawdopodobnie siedzi
+            ankles_visible = (len(landmarks) > self.LEFT_ANKLE and landmarks[self.LEFT_ANKLE][3] > 0.5) or \
+                             (len(landmarks) > self.RIGHT_ANKLE and landmarks[self.RIGHT_ANKLE][3] > 0.5)
 
-            return sitting_confidence > 0.6  # Próg pewności
+            # Końcowa decyzja - siedzi jeśli spełnione jest którekolwiek z kryteriów
+            return is_sitting_by_position or is_sitting_by_knees or not ankles_visible
 
         except Exception as e:
             print(f"Błąd podczas analizy pozy: {str(e)}")
             return False  # W razie błędu zakładamy, że osoba stoi
-
-    def _get_shoulders_y(self, landmarks: List[Tuple[float, float, float, float]]) -> Optional[float]:
-        """
-        Zwraca średnią pozycję Y ramion.
-
-        Args:
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-
-        Returns:
-            Optional[float]: Średnia pozycja Y ramion lub None jeśli nie wykryto
-        """
-        left_shoulder = landmarks[self.LEFT_SHOULDER] if self.LEFT_SHOULDER < len(landmarks) else None
-        right_shoulder = landmarks[self.RIGHT_SHOULDER] if self.RIGHT_SHOULDER < len(landmarks) else None
-
-        if left_shoulder and left_shoulder[3] > 0.5 and right_shoulder and right_shoulder[3] > 0.5:
-            # Mamy oba ramiona z dobrą widocznością
-            return (left_shoulder[1] + right_shoulder[1]) / 2
-        elif left_shoulder and left_shoulder[3] > 0.5:
-            # Mamy tylko lewe ramię
-            return left_shoulder[1]
-        elif right_shoulder and right_shoulder[3] > 0.5:
-            # Mamy tylko prawe ramię
-            return right_shoulder[1]
-        else:
-            return None
-
-    def _get_hips_y(self, landmarks: List[Tuple[float, float, float, float]]) -> Optional[float]:
-        """
-        Zwraca średnią pozycję Y bioder.
-
-        Args:
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-
-        Returns:
-            Optional[float]: Średnia pozycja Y bioder lub None jeśli nie wykryto
-        """
-        left_hip = landmarks[self.LEFT_HIP] if self.LEFT_HIP < len(landmarks) else None
-        right_hip = landmarks[self.RIGHT_HIP] if self.RIGHT_HIP < len(landmarks) else None
-
-        if left_hip and left_hip[3] > 0.5 and right_hip and right_hip[3] > 0.5:
-            # Mamy oba biodra z dobrą widocznością
-            return (left_hip[1] + right_hip[1]) / 2
-        elif left_hip and left_hip[3] > 0.5:
-            # Mamy tylko lewe biodro
-            return left_hip[1]
-        elif right_hip and right_hip[3] > 0.5:
-            # Mamy tylko prawe biodro
-            return right_hip[1]
-        else:
-            return None
-
-    def _get_knees_y(self, landmarks: List[Tuple[float, float, float, float]]) -> Optional[float]:
-        """
-        Zwraca średnią pozycję Y kolan.
-
-        Args:
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-
-        Returns:
-            Optional[float]: Średnia pozycja Y kolan lub None jeśli nie wykryto
-        """
-        left_knee = landmarks[self.LEFT_KNEE] if self.LEFT_KNEE < len(landmarks) else None
-        right_knee = landmarks[self.RIGHT_KNEE] if self.RIGHT_KNEE < len(landmarks) else None
-
-        if left_knee and left_knee[3] > 0.5 and right_knee and right_knee[3] > 0.5:
-            # Mamy oba kolana z dobrą widocznością
-            return (left_knee[1] + right_knee[1]) / 2
-        elif left_knee and left_knee[3] > 0.5:
-            # Mamy tylko lewe kolano
-            return left_knee[1]
-        elif right_knee and right_knee[3] > 0.5:
-            # Mamy tylko prawe kolano
-            return right_knee[1]
-        else:
-            return None
-
-    def _calculate_hip_knee_ratio(
-        self,
-        hips_y: Optional[float],
-        knees_y: Optional[float]
-    ) -> float:
-        """
-        Oblicza stosunek odległości między biodrami a kolanami.
-
-        Args:
-            hips_y (Optional[float]): Pozycja Y bioder
-            knees_y (Optional[float]): Pozycja Y kolan
-
-        Returns:
-            float: Stosunek odległości lub wartość domyślna (0.5) jeśli brak danych
-        """
-        if hips_y is None or knees_y is None:
-            return 0.5  # Wartość domyślna
-
-        # Odległość między biodrami a kolanami
-        distance = abs(knees_y - hips_y)
-
-        # Normalizacja do zakresu 0-1, gdzie mniejsze wartości oznaczają bliskość (siedzenie)
-        # a większe - odległość (stanie)
-        if distance < 0.05:  # Bardzo bliskie punkty
-            return 0.1  # Prawie na pewno siedzi
-        elif distance > 0.3:  # Dalekie punkty
-            return 0.9  # Prawie na pewno stoi
-        else:
-            # Liniowa interpolacja między skrajnymi przypadkami
-            return 0.1 + ((distance - 0.05) / 0.25) * 0.8
-
-    def _calculate_bottom_proximity(
-        self,
-        hips_y: Optional[float],
-        frame_height: Optional[int]
-    ) -> Optional[float]:
-        """
-        Oblicza bliskość bioder do dolnej krawędzi kadru.
-
-        Args:
-            hips_y (Optional[float]): Pozycja Y bioder (wartość znormalizowana 0-1)
-            frame_height (Optional[int]): Wysokość klatki w pikselach
-
-        Returns:
-            Optional[float]: Wartość bliskości (0-1) lub None jeśli brak danych
-        """
-        if hips_y is None or frame_height is None:
-            return None
-
-        # Wartość hips_y jest już znormalizowana do zakresu 0-1
-        # Im bliżej 1, tym bliżej dolnej krawędzi
-        # Dla siedzenia biodra są często bliżej dolnej krawędzi kadru
-        bottom_proximity = hips_y
-
-        return bottom_proximity
