@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# drawing/face_renderer.py
+# src/drawing/face_renderer.py
 
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 
 import cv2
 import numpy as np
+
+from src.utils.custom_logger import CustomLogger
 
 
 class SimpleFaceRenderer:
     """
     Uproszczony renderer twarzy dla stick figure z podstawowymi wyrazami mimicznymi.
-    Ulepszona czułość na zmiany mimiki.
+    Zapewnia płynne przejścia między wyrazami twarzy i zwiększoną czułość na zmiany mimiki.
     """
 
     def __init__(
         self,
         feature_color: Tuple[int, int, int] = (0, 0, 0),  # Czarny
-        smooth_factor: float = 0.3
+        smooth_factor: float = 0.3,
+        logger: Optional[CustomLogger] = None
     ):
         """
         Inicjalizacja renderera twarzy.
@@ -25,7 +28,11 @@ class SimpleFaceRenderer:
         Args:
             feature_color (Tuple[int, int, int]): Kolor elementów twarzy (BGR)
             smooth_factor (float): Współczynnik wygładzania ruchu (0.0-1.0)
+            logger (Optional[CustomLogger]): Logger do zapisywania komunikatów
         """
+        # Inicjalizacja loggera
+        self.logger = logger or CustomLogger()
+
         # Parametry renderowania
         self.feature_color = feature_color
         self.smooth_factor = smooth_factor
@@ -51,10 +58,10 @@ class SimpleFaceRenderer:
         self.neutral_upper = 0.55
 
         # Dodajemy filtr uśredniający ostatnie N wyrazów twarzy dla większej płynności
-        self.expressions_history = []
+        self.expressions_history: List[Dict[str, float]] = []
         self.expressions_history_size = 5  # Ilość klatek do uśredniania
 
-        print(f"SimpleFaceRenderer zainicjalizowany")
+        self.logger.info("SimpleFaceRenderer", "Zainicjalizowano renderer twarzy", log_type="DRAWING")
 
     def draw_face(
         self,
@@ -118,8 +125,20 @@ class SimpleFaceRenderer:
                 # W przeciwnym razie rysujemy prostą twarz w zależności od nastroju
                 self._draw_mood_face(canvas, head_center, head_radius, mood)
 
+            # Dodaj logowanie co 500 klatek
+            if self.frame_count % 500 == 0:
+                self.logger.debug(
+                    "SimpleFaceRenderer",
+                    f"Wyrenderowano {self.frame_count} klatek twarzy, aktualny nastrój: {mood}",
+                    log_type="DRAWING"
+                )
+
         except Exception as e:
-            print(f"Błąd podczas rysowania twarzy: {str(e)}")
+            self.logger.error(
+                "SimpleFaceRenderer",
+                f"Błąd podczas rysowania twarzy: {str(e)}",
+                log_type="DRAWING"
+            )
 
     def _average_expressions(self) -> Dict[str, float]:
         """
@@ -270,7 +289,11 @@ class SimpleFaceRenderer:
 
         # Logowanie co 100 klatek
         if self.frame_count % 100 == 0:
-            print(f"Wyrazy twarzy: smile={smile:.2f}, mouth_open={mouth_open:.2f}, mood={mood}")
+            self.logger.debug(
+                "SimpleFaceRenderer",
+                f"Wyrazy twarzy: smile={smile:.2f}, mouth_open={mouth_open:.2f}, mood={mood}",
+                log_type="DRAWING"
+            )
 
         if mouth_open > 0.2:
             # Otwarte usta - elipsa
@@ -419,3 +442,5 @@ class SimpleFaceRenderer:
         }
         self.expressions_history = []
         self.frame_count = 0
+
+        self.logger.debug("SimpleFaceRenderer", "Zresetowano stan renderera twarzy", log_type="DRAWING")

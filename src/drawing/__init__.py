@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# drawing/__init__.py
 
 """
-Moduł stick_figure - prosta implementacja renderowania stick figure (patyczaka)
-skupiona tylko na popiersu, z prostą mimiką twarzy.
+Moduł stick_figure - implementacja renderowania stick figure (patyczaka)
+z płynną animacją ruchu rąk, nawet gdy nie są wykrywane przez kamerę.
 """
 
 from .face_renderer import SimpleFaceRenderer
