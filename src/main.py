@@ -22,8 +22,9 @@ import mediapipe as mp
 from src.drawing.stick_figure_renderer import StickFigureRenderer
 # Importy z własnych modułów
 from src.utils.custom_logger import CustomLogger
-from src.utils.performance import PerformanceMonitor
 from src.utils.logging_config import setup_logger
+from src.utils.performance import PerformanceMonitor
+
 
 class StickFigureWebcam:
     """
@@ -494,6 +495,7 @@ class StickFigureWebcam:
     def _process_hand_landmarks(self, multi_hand_landmarks: List, face_data: Dict[str, Any]) -> None:
         """
         Przetwarza punkty charakterystyczne rąk z MediaPipe i dodaje je do danych twarzy.
+        Ulepszono wykrywanie łokci dla lepszego renderowania ramion.
 
         Args:
             multi_hand_landmarks: Lista punktów charakterystycznych rąk z MediaPipe
@@ -508,7 +510,7 @@ class StickFigureWebcam:
             PINKY_MCP = 17  # Podstawa małego palca
 
             # Dodajemy informacje o rękach do danych
-            if "hands_data" not in face_data:
+            if not "hands_data" in face_data:
                 face_data["hands_data"] = {
                     "left_hand": None,
                     "right_hand": None
@@ -531,15 +533,25 @@ class StickFigureWebcam:
                     hand_points.append((landmark.x, landmark.y, landmark.z,
                                         landmark.visibility if hasattr(landmark, 'visibility') else 1.0))
 
-                # Obliczenie pozycji łokcia na podstawie nadgarstka i środka ciała
-                # Jest to szacunek, ponieważ MediaPipe Hands nie wykrywa łokcia
-                # Używamy pozycji nadgarstka i estymujemy łokieć w kierunku ciała
+                # Ulepszone obliczenie pozycji łokcia na podstawie nadgarstka i środka ciała
                 wrist_pos = hand_points[WRIST]
-                center_x = 0.5  # Środek ekranu w poziomie
+
+                # Środek ciała - używamy wykrytej twarzy do lepszego oszacowania
+                center_x = 0.5  # Domyślnie środek ekranu
+                center_y = 0.3  # Wyżej niż środek ekranu
+
+                # Jeśli mamy wykrytą twarz, używamy jej pozycji do lepszego oszacowania środka ciała
+                if "landmarks" in face_data and face_data["landmarks"]:
+                    face_landmarks = face_data["landmarks"]
+                    if len(face_landmarks) > self.renderer.NOSE:
+                        nose_pos = face_landmarks[self.renderer.NOSE]
+                        if nose_pos[3] > 0.5:  # Jeśli nos jest dobrze widoczny
+                            center_x = nose_pos[0]
+                            center_y = nose_pos[1] + 0.15  # Nieco poniżej nosa
 
                 # Obliczamy wektor od nadgarstka do środka ciała
                 vector_x = center_x - wrist_pos[0]
-                vector_y = 0.2 - wrist_pos[1]  # Zakładamy, że środek ciała jest wyżej niż nadgarstek
+                vector_y = center_y - wrist_pos[1]
 
                 # Normalizujemy wektor
                 vector_len = (vector_x ** 2 + vector_y ** 2) ** 0.5
@@ -548,8 +560,9 @@ class StickFigureWebcam:
                     vector_y /= vector_len
 
                 # Tworzymy punkt łokcia pomiędzy nadgarstkiem a ciałem
-                elbow_x = wrist_pos[0] + vector_x * 0.15
-                elbow_y = wrist_pos[1] + vector_y * 0.15
+                # Zwiększamy odległość od nadgarstka dla lepszego efektu wizualnego
+                elbow_x = wrist_pos[0] + vector_x * 0.2
+                elbow_y = wrist_pos[1] + vector_y * 0.2
                 elbow_pos = (elbow_x, elbow_y, 0.0, 1.0)
 
                 # Dodajemy kluczowe punkty do danych
@@ -565,7 +578,8 @@ class StickFigureWebcam:
                     if self.debug and self.frame_count % 50 == 0:
                         self.logger.debug(
                             "Main",
-                            f"Wykryto LEWĄ rękę: nadgarstek=({wrist_pos[0]:.2f}, {wrist_pos[1]:.2f})",
+                            f"Wykryto LEWĄ rękę: nadgarstek=({wrist_pos[0]:.2f}, {wrist_pos[1]:.2f}), "
+                            f"łokieć=({elbow_pos[0]:.2f}, {elbow_pos[1]:.2f})",
                             log_type="HANDS"
                         )
                 else:
@@ -573,7 +587,8 @@ class StickFigureWebcam:
                     if self.debug and self.frame_count % 50 == 0:
                         self.logger.debug(
                             "Main",
-                            f"Wykryto PRAWĄ rękę: nadgarstek=({wrist_pos[0]:.2f}, {wrist_pos[1]:.2f})",
+                            f"Wykryto PRAWĄ rękę: nadgarstek=({wrist_pos[0]:.2f}, {wrist_pos[1]:.2f}), "
+                            f"łokieć=({elbow_pos[0]:.2f}, {elbow_pos[1]:.2f})",
                             log_type="HANDS"
                         )
 
@@ -583,13 +598,6 @@ class StickFigureWebcam:
                 f"Błąd podczas przetwarzania punktów rąk: {str(e)}",
                 log_type="HANDS",
                 error={"error": str(e)}
-            )
-            # Dodajemy traceback dla lepszego debugowania
-            import traceback
-            self.logger.debug(
-                "Main",
-                f"Traceback: {traceback.format_exc()}",
-                log_type="HANDS"
             )
 
     def _show_preview(self, original_frame, stick_figure):
