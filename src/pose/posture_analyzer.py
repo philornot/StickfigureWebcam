@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -18,13 +18,13 @@ class PostureAnalyzer:
     """
 
     def __init__(
-            self,
-            standing_hip_threshold: float = 0.7,
-            confidence_threshold: float = 0.6,
-            smoothing_factor: float = 0.7,
-            temporal_smoothing: int = 5,
-            partial_visibility_bias: float = 0.8,  # Preferencja siedzenia przy częściowej widoczności
-            logger: Optional[CustomLogger] = None
+        self,
+        standing_hip_threshold: float = 0.7,
+        confidence_threshold: float = 0.6,
+        smoothing_factor: float = 0.7,
+        temporal_smoothing: int = 5,
+        partial_visibility_bias: float = 0.8,  # Preferencja siedzenia przy częściowej widoczności
+        logger: Optional[CustomLogger] = None,
     ):
         """
         Inicjalizacja analizatora postawy.
@@ -70,28 +70,34 @@ class PostureAnalyzer:
         # Definiujemy podstawowe części ciała dla analizy widoczności
         self.UPPER_BODY_POINTS = [
             PoseDetector.NOSE,
-            PoseDetector.LEFT_EYE, PoseDetector.RIGHT_EYE,
-            PoseDetector.LEFT_SHOULDER, PoseDetector.RIGHT_SHOULDER,
-            PoseDetector.LEFT_ELBOW, PoseDetector.RIGHT_ELBOW
+            PoseDetector.LEFT_EYE,
+            PoseDetector.RIGHT_EYE,
+            PoseDetector.LEFT_SHOULDER,
+            PoseDetector.RIGHT_SHOULDER,
+            PoseDetector.LEFT_ELBOW,
+            PoseDetector.RIGHT_ELBOW,
         ]
 
         self.LOWER_BODY_POINTS = [
-            PoseDetector.LEFT_HIP, PoseDetector.RIGHT_HIP,
-            PoseDetector.LEFT_KNEE, PoseDetector.RIGHT_KNEE,
-            PoseDetector.LEFT_ANKLE, PoseDetector.RIGHT_ANKLE
+            PoseDetector.LEFT_HIP,
+            PoseDetector.RIGHT_HIP,
+            PoseDetector.LEFT_KNEE,
+            PoseDetector.RIGHT_KNEE,
+            PoseDetector.LEFT_ANKLE,
+            PoseDetector.RIGHT_ANKLE,
         ]
 
         self.logger.info(
             "PostureAnalyzer",
             f"Analizator postawy zainicjalizowany (próg stania: {standing_hip_threshold})",
-            log_type="POSE"
+            log_type="POSE",
         )
 
     def analyze_posture(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            frame_height: int,
-            frame_width: int
+        self,
+        landmarks: List[Tuple[float, float, float, float]],
+        frame_height: int,
+        frame_width: int,
     ) -> Dict[str, Any]:
         """
         Analizuje postawę użytkownika i określa czy siedzi czy stoi.
@@ -112,14 +118,12 @@ class PostureAnalyzer:
             "confidence": 0.0,
             "posture": "unknown",
             "visible_keypoints": 0,
-            "visibility_type": "unknown"
+            "visibility_type": "unknown",
         }
 
         if landmarks is None or len(landmarks) < 33:  # MediaPipe Pose ma 33 punkty
             self.logger.debug(
-                "PostureAnalyzer",
-                "Za mało punktów do analizy postawy",
-                log_type="POSE"
+                "PostureAnalyzer", "Za mało punktów do analizy postawy", log_type="POSE"
             )
             return result
 
@@ -136,7 +140,7 @@ class PostureAnalyzer:
                     "PostureAnalyzer",
                     f"Za mało widocznych punktów ({visible_keypoints}/33), "
                     "ale próbujemy analizować z ograniczoną pewnością",
-                    log_type="POSE"
+                    log_type="POSE",
                 )
 
             # Analiza typu widoczności (pełne ciało, górna część, itp.)
@@ -152,16 +156,22 @@ class PostureAnalyzer:
             # Ważenie poszczególnych wyników w zależności od typu widoczności
             if visibility_type == "full_body":
                 # Jeśli widać całe ciało, używamy standardowych wag
-                sitting_probability = (0.5 * hip_score + 0.25 * leg_score +
-                                       0.20 * torso_score + 0.05 * visibility_score)
+                sitting_probability = (
+                    0.5 * hip_score
+                    + 0.25 * leg_score
+                    + 0.20 * torso_score
+                    + 0.05 * visibility_score
+                )
             elif visibility_type == "upper_body":
                 # Jeśli widać tylko górną część ciała, dajemy większą wagę analizie widoczności
-                sitting_probability = (0.3 * hip_score + 0.4 * leg_score +
-                                       0.1 * torso_score + 0.2 * visibility_score)
+                sitting_probability = (
+                    0.3 * hip_score + 0.4 * leg_score + 0.1 * torso_score + 0.2 * visibility_score
+                )
             else:  # partial_visibility lub unknown
                 # Przy bardzo ograniczonej widoczności silnie preferujemy siedzenie (typowy scenariusz wideokonferencji)
-                sitting_probability = (0.1 * hip_score + 0.2 * leg_score +
-                                       0.1 * torso_score + 0.6 * visibility_score)
+                sitting_probability = (
+                    0.1 * hip_score + 0.2 * leg_score + 0.1 * torso_score + 0.6 * visibility_score
+                )
 
             # Ograniczamy do zakresu 0.0-1.0
             sitting_probability = max(0.0, min(1.0, sitting_probability))
@@ -169,17 +179,21 @@ class PostureAnalyzer:
             # WAŻNA POPRAWKA: Dla przypadku bardzo ograniczonej widoczności (torso_only_detection)
             # wymuszamy wysokie prawdopodobieństwo siedzenia
             if visible_keypoints <= 12 and visibility_type in ["partial_visibility", "unknown"]:
-                sitting_probability = max(sitting_probability, 0.85)  # Wymuszamy wysokie prawdopodobieństwo siedzenia
+                sitting_probability = max(
+                    sitting_probability, 0.85
+                )  # Wymuszamy wysokie prawdopodobieństwo siedzenia
                 self.logger.debug(
                     "PostureAnalyzer",
                     f"Bardzo ograniczona widoczność: zwiększam prawdopodobieństwo siedzenia do {sitting_probability:.2f}",
-                    log_type="POSE"
+                    log_type="POSE",
                 )
 
             # Stosujemy wygładzanie wykładnicze dla bieżącej detekcji
             if self.sitting_probability is not None:
-                sitting_probability = (self.smoothing_factor * self.sitting_probability +
-                                       (1 - self.smoothing_factor) * sitting_probability)
+                sitting_probability = (
+                    self.smoothing_factor * self.sitting_probability
+                    + (1 - self.smoothing_factor) * sitting_probability
+                )
 
             # Dodajemy do historii dla wygładzania czasowego
             self.history_buffer.append(sitting_probability)
@@ -209,7 +223,9 @@ class PostureAnalyzer:
                 self.consecutive_frames += 1
             else:
                 # Zmiana stanu tylko po przekroczeniu progu
-                threshold_frames = 5 if is_sitting else 10  # Wymagamy więcej klatek aby zmienić na stojącą
+                threshold_frames = (
+                    5 if is_sitting else 10
+                )  # Wymagamy więcej klatek aby zmienić na stojącą
                 if self.consecutive_frames >= threshold_frames:
                     self.is_sitting = is_sitting
 
@@ -218,7 +234,7 @@ class PostureAnalyzer:
                         "PostureAnalyzer",
                         f"Zmiana postawy: {'siedząca' if is_sitting else 'stojąca'} "
                         f"(pewność: {smoothed_probability:.2f}, typ widoczności: {visibility_type})",
-                        log_type="POSE"
+                        log_type="POSE",
                     )
 
                 self.consecutive_frames = 1
@@ -236,7 +252,7 @@ class PostureAnalyzer:
                 "torso_score": torso_score,
                 "visibility_score": visibility_score,
                 "consecutive_frames": self.consecutive_frames,
-                "visibility_type": visibility_type
+                "visibility_type": visibility_type,
             }
 
             self.performance.stop_timer()
@@ -248,7 +264,7 @@ class PostureAnalyzer:
                 "PostureAnalyzer",
                 f"Błąd podczas analizy postawy: {str(e)}",
                 log_type="POSE",
-                error={"error": str(e)}
+                error={"error": str(e)},
             )
             return result
 
@@ -263,11 +279,17 @@ class PostureAnalyzer:
             str: Typ widoczności: "full_body", "upper_body", "partial_visibility" lub "unknown"
         """
         # Liczymy widoczne punkty w górnej i dolnej części ciała
-        upper_visible = sum(1 for point_id in self.UPPER_BODY_POINTS
-                            if landmarks[point_id][3] > self.confidence_threshold)
+        upper_visible = sum(
+            1
+            for point_id in self.UPPER_BODY_POINTS
+            if landmarks[point_id][3] > self.confidence_threshold
+        )
 
-        lower_visible = sum(1 for point_id in self.LOWER_BODY_POINTS
-                            if landmarks[point_id][3] > self.confidence_threshold)
+        lower_visible = sum(
+            1
+            for point_id in self.LOWER_BODY_POINTS
+            if landmarks[point_id][3] > self.confidence_threshold
+        )
 
         upper_ratio = upper_visible / len(self.UPPER_BODY_POINTS)
         lower_ratio = lower_visible / len(self.LOWER_BODY_POINTS)
@@ -283,9 +305,7 @@ class PostureAnalyzer:
             return "unknown"  # Trudno określić
 
     def _analyze_partial_visibility(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            visibility_type: str
+        self, landmarks: List[Tuple[float, float, float, float]], visibility_type: str
     ) -> float:
         """
         Analizuje częściową widoczność i zwraca prawdopodobieństwo siedzenia bazując
@@ -316,9 +336,7 @@ class PostureAnalyzer:
             return 0.9  # Ekstremalna preferencja siedzenia w przypadku nieznanym
 
     def _analyze_hip_position(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            frame_height: int
+        self, landmarks: List[Tuple[float, float, float, float]], frame_height: int
     ) -> float:
         """
         Analizuje pozycję bioder względem wysokości obrazu.
@@ -337,8 +355,10 @@ class PostureAnalyzer:
         # Sprawdzamy widoczność
         if left_hip[3] < self.confidence_threshold and right_hip[3] < self.confidence_threshold:
             # Jeśli biodra nie są widoczne, patrzymy czy ramiona są widoczne
-            if (landmarks[self.LEFT_SHOULDER][3] > self.confidence_threshold or
-                    landmarks[self.RIGHT_SHOULDER][3] > self.confidence_threshold):
+            if (
+                landmarks[self.LEFT_SHOULDER][3] > self.confidence_threshold
+                or landmarks[self.RIGHT_SHOULDER][3] > self.confidence_threshold
+            ):
                 # Biodra niewidoczne, ale ramiona widoczne - typowy scenariusz dla pozycji siedzącej
                 return 0.85  # Podwyższona wartość wskazująca na siedzenie
             return 0.7  # Lekko zwiększona wartość neutralna
@@ -354,7 +374,11 @@ class PostureAnalyzer:
         else:
             # Biodra są niżej niż próg - prawdopodobnie siedzi
             # Im niżej biodra, tym większa wartość
-            return min(1, (hip_y - self.standing_hip_threshold) / (1 - self.standing_hip_threshold) * 0.8 + 0.2)
+            return min(
+                1,
+                (hip_y - self.standing_hip_threshold) / (1 - self.standing_hip_threshold) * 0.8
+                + 0.2,
+            )
 
     def _analyze_leg_visibility(self, landmarks: List[Tuple[float, float, float, float]]) -> float:
         """
@@ -374,7 +398,9 @@ class PostureAnalyzer:
         right_knee_visible = landmarks[self.RIGHT_KNEE][3] > self.confidence_threshold
 
         # Liczymy widoczne części nóg
-        visible_parts = sum([left_ankle_visible, right_ankle_visible, left_knee_visible, right_knee_visible])
+        visible_parts = sum(
+            [left_ankle_visible, right_ankle_visible, left_knee_visible, right_knee_visible]
+        )
 
         # Im mniej widocznych części nóg, tym większe prawdopodobieństwo siedzenia
         # Ulepszona skala wartości z silniejszą preferencją siedzenia
@@ -387,9 +413,13 @@ class PostureAnalyzer:
         elif visible_parts == 3:
             return 0.2  # Obniżona wartość
         else:  # visible_parts == 4
-            return 0.05  # Jeszcze niższe prawdopodobieństwo siedzenia gdy widać wszystkie części nóg
+            return (
+                0.05  # Jeszcze niższe prawdopodobieństwo siedzenia gdy widać wszystkie części nóg
+            )
 
-    def _analyze_torso_proportion(self, landmarks: List[Tuple[float, float, float, float]]) -> float:
+    def _analyze_torso_proportion(
+        self, landmarks: List[Tuple[float, float, float, float]]
+    ) -> float:
         """
         Analizuje proporcje tułowia (odległość biodra-ramię vs biodro-kolano).
 
@@ -408,19 +438,25 @@ class PostureAnalyzer:
         right_knee = landmarks[self.RIGHT_KNEE]
 
         # Sprawdzamy czy mamy wystarczająco punktów do analizy
-        left_side_visible = (left_shoulder[3] > self.confidence_threshold and
-                             left_hip[3] > self.confidence_threshold and
-                             left_knee[3] > self.confidence_threshold)
+        left_side_visible = (
+            left_shoulder[3] > self.confidence_threshold
+            and left_hip[3] > self.confidence_threshold
+            and left_knee[3] > self.confidence_threshold
+        )
 
-        right_side_visible = (right_shoulder[3] > self.confidence_threshold and
-                              right_hip[3] > self.confidence_threshold and
-                              right_knee[3] > self.confidence_threshold)
+        right_side_visible = (
+            right_shoulder[3] > self.confidence_threshold
+            and right_hip[3] > self.confidence_threshold
+            and right_knee[3] > self.confidence_threshold
+        )
 
         if not left_side_visible and not right_side_visible:
             # Jeśli nie mamy pełnej widoczności po żadnej stronie
             # Sprawdzamy czy mamy chociaż widoczne ramiona
-            shoulders_visible = (left_shoulder[3] > self.confidence_threshold or
-                                 right_shoulder[3] > self.confidence_threshold)
+            shoulders_visible = (
+                left_shoulder[3] > self.confidence_threshold
+                or right_shoulder[3] > self.confidence_threshold
+            )
 
             if shoulders_visible:
                 # Jeśli widać tylko górną część ciała, zwiększamy prawdopodobieństwo siedzenia
@@ -429,9 +465,11 @@ class PostureAnalyzer:
             return 0.7  # Lekko preferujemy siedzenie jako bezpieczniejsze założenie
 
         # Wybieramy stronę z lepszą widocznością
-        if left_side_visible and (not right_side_visible or
-                                  (left_shoulder[3] + left_hip[3] + left_knee[3]) >
-                                  (right_shoulder[3] + right_hip[3] + right_knee[3])):
+        if left_side_visible and (
+            not right_side_visible
+            or (left_shoulder[3] + left_hip[3] + left_knee[3])
+            > (right_shoulder[3] + right_hip[3] + right_knee[3])
+        ):
             shoulder = left_shoulder
             hip = left_hip
             knee = left_knee
@@ -495,15 +533,21 @@ class PostureAnalyzer:
         """
         # Punkty górnej części ciała mają największe znaczenie dla detekcji w trybie wideokonferencji
         upper_body_points = [
-            self.LEFT_SHOULDER, self.RIGHT_SHOULDER,
-            PoseDetector.NOSE, PoseDetector.LEFT_EYE, PoseDetector.RIGHT_EYE
+            self.LEFT_SHOULDER,
+            self.RIGHT_SHOULDER,
+            PoseDetector.NOSE,
+            PoseDetector.LEFT_EYE,
+            PoseDetector.RIGHT_EYE,
         ]
 
         # Punkty dolnej części ciała
         lower_body_points = [
-            self.LEFT_HIP, self.RIGHT_HIP,
-            self.LEFT_KNEE, self.RIGHT_KNEE,
-            self.LEFT_ANKLE, self.RIGHT_ANKLE
+            self.LEFT_HIP,
+            self.RIGHT_HIP,
+            self.LEFT_KNEE,
+            self.RIGHT_KNEE,
+            self.LEFT_ANKLE,
+            self.RIGHT_ANKLE,
         ]
 
         # Obliczamy średnią widoczność dla górnej i dolnej części ciała
@@ -541,7 +585,9 @@ class PostureAnalyzer:
         self.consecutive_frames = 0
         self.last_visible_keypoints_count = 0
 
-        self.logger.debug("PostureAnalyzer", "Stan analizatora postawy zresetowany", log_type="POSE")
+        self.logger.debug(
+            "PostureAnalyzer", "Stan analizatora postawy zresetowany", log_type="POSE"
+        )
 
     def get_current_posture(self) -> Dict[str, Any]:
         """
@@ -552,18 +598,22 @@ class PostureAnalyzer:
         """
         return {
             "is_sitting": self.is_sitting,
-            "posture": "sitting" if self.is_sitting else ("standing" if self.is_sitting is not None else "unknown"),
+            "posture": (
+                "sitting"
+                if self.is_sitting
+                else ("standing" if self.is_sitting is not None else "unknown")
+            ),
             "sitting_probability": self.sitting_probability,
             "consecutive_frames": self.consecutive_frames,
-            "visible_keypoints": self.last_visible_keypoints_count
+            "visible_keypoints": self.last_visible_keypoints_count,
         }
 
     def update_thresholds(
-            self,
-            standing_hip_threshold: Optional[float] = None,
-            confidence_threshold: Optional[float] = None,
-            smoothing_factor: Optional[float] = None,
-            partial_visibility_bias: Optional[float] = None
+        self,
+        standing_hip_threshold: Optional[float] = None,
+        confidence_threshold: Optional[float] = None,
+        smoothing_factor: Optional[float] = None,
+        partial_visibility_bias: Optional[float] = None,
     ) -> None:
         """
         Aktualizuje progi detekcji.
@@ -592,5 +642,5 @@ class PostureAnalyzer:
             f"Zaktualizowano parametry analizatora (hip_threshold={self.standing_hip_threshold}, "
             f"confidence_threshold={self.confidence_threshold}, "
             f"smoothing_factor={self.smoothing_factor})",
-            log_type="POSE"
+            log_type="POSE",
         )

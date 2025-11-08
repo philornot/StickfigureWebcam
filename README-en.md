@@ -64,10 +64,10 @@ like Discord, Zoom, Teams, or other video conferencing tools.
 2. Create and activate a virtual environment (optional but recommended):
     ```bash
     python -m venv venv
-    
+
     # Windows:
     venv\Scripts\activate
-    
+
     # Linux/macOS:
     source venv/bin/activate
     ```
@@ -76,7 +76,7 @@ like Discord, Zoom, Teams, or other video conferencing tools.
     ```bash
     # For users: install just the application
     pip install -e .
-    
+
     # For developers: install with development tools
     pip install -e ".[dev]"
     ```
@@ -153,7 +153,7 @@ StickfigureWebcam/
 │   ├── pose/             # Pose detection and analysis
 │   └── utils/            # Utility functions
 ├── tests/                # Unit tests
-├── pyproject.toml        # Project configuration 
+├── pyproject.toml        # Project configuration
 ├── requirements.txt      # Runtime dependencies
 ├── requirements-dev.txt  # Development dependencies
 └── Makefile              # Development tasks

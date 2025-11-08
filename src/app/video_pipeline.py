@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Video processing pipeline handling camera input and MediaPipe processing."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import cv2
 import mediapipe as mp
@@ -27,7 +27,7 @@ class VideoPipeline:
         self,
         camera_config: Dict[str, Any],
         processing_config: Dict[str, Any],
-        logger: Optional[CustomLogger] = None
+        logger: Optional[CustomLogger] = None,
     ):
         """Initialize the video pipeline.
 
@@ -118,7 +118,7 @@ class VideoPipeline:
                 max_num_faces=1,
                 refine_landmarks=True,
                 min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
+                min_tracking_confidence=0.5,
             )
 
             # Hands for hand/arm tracking
@@ -126,7 +126,7 @@ class VideoPipeline:
                 static_image_mode=False,
                 max_num_hands=2,
                 min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
+                min_tracking_confidence=0.5,
             )
 
             self.logger.info("Pipeline", "MediaPipe initialized")
@@ -150,7 +150,7 @@ class VideoPipeline:
                 bg_color=tuple(self.processing_config.get("bg_color", [255, 255, 255])),
                 figure_color=tuple(self.processing_config.get("figure_color", [0, 0, 0])),
                 smooth_factor=self.processing_config.get("smooth_factor", 0.3),
-                logger=self.logger
+                logger=self.logger,
             )
 
             self.logger.info("Pipeline", "Renderer initialized")
@@ -169,11 +169,7 @@ class VideoPipeline:
             height = self.camera_config.get("height", 480)
             fps = self.camera_config.get("fps", 30)
 
-            self.virtual_camera = pyvirtualcam.Camera(
-                width=width,
-                height=height,
-                fps=fps
-            )
+            self.virtual_camera = pyvirtualcam.Camera(width=width, height=height, fps=fps)
 
             self.logger.info("Pipeline", f"Virtual camera: {self.virtual_camera.device}")
 
@@ -226,18 +222,14 @@ class VideoPipeline:
                 "original_frame": frame,
                 "processed_frame": stick_figure,
                 "face_data": face_data,
-                "fps": self.performance.get_current_fps()
+                "fps": self.performance.get_current_fps(),
             }
 
         except Exception as e:
             self.logger.error("Pipeline", f"Frame processing failed: {str(e)}")
             return None
 
-    def _process_detections(
-        self,
-        face_results,
-        hands_results
-    ) -> Dict[str, Any]:
+    def _process_detections(self, face_results, hands_results) -> Dict[str, Any]:
         """Process MediaPipe detection results.
 
         Args:
@@ -252,28 +244,20 @@ class VideoPipeline:
         # Process face landmarks
         if face_results.multi_face_landmarks:
             face_landmarks = face_results.multi_face_landmarks[0]
-            landmarks = [
-                (lm.x, lm.y, lm.z, 1.0)
-                for lm in face_landmarks.landmark
-            ]
+            landmarks = [(lm.x, lm.y, lm.z, 1.0) for lm in face_landmarks.landmark]
             face_data = {
                 "has_face": True,
                 "landmarks": landmarks,
-                "expressions": self._analyze_expressions(landmarks)
+                "expressions": self._analyze_expressions(landmarks),
             }
 
         # Process hand landmarks
         if hands_results.multi_hand_landmarks:
-            face_data["hands_data"] = self._process_hands(
-                hands_results.multi_hand_landmarks
-            )
+            face_data["hands_data"] = self._process_hands(hands_results.multi_hand_landmarks)
 
         return face_data
 
-    def _analyze_expressions(
-        self,
-        landmarks: list
-    ) -> Dict[str, float]:
+    def _analyze_expressions(self, landmarks: list) -> Dict[str, float]:
         """Analyze facial expressions from landmarks.
 
         Args:
@@ -303,16 +287,11 @@ class VideoPipeline:
                 "mouth_open": mouth_open,
                 "smile": smile,
                 "left_eye_open": 1.0,
-                "right_eye_open": 1.0
+                "right_eye_open": 1.0,
             }
 
         except Exception:
-            return {
-                "mouth_open": 0.0,
-                "smile": 0.5,
-                "left_eye_open": 1.0,
-                "right_eye_open": 1.0
-            }
+            return {"mouth_open": 0.0, "smile": 0.5, "left_eye_open": 1.0, "right_eye_open": 1.0}
 
     def _process_hands(self, multi_hand_landmarks) -> Dict[str, Any]:
         """Process hand landmarks.
@@ -338,11 +317,7 @@ class VideoPipeline:
             # Simple left/right detection
             is_left = wrist.x < 0.5
 
-            hand_data = {
-                "wrist": wrist_pos,
-                "elbow": elbow_pos,
-                "is_left": is_left
-            }
+            hand_data = {"wrist": wrist_pos, "elbow": elbow_pos, "is_left": is_left}
 
             if is_left:
                 hands_data["left_hand"] = hand_data

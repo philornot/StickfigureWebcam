@@ -4,7 +4,7 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from src.utils.custom_logger import CustomLogger
 
@@ -13,32 +13,18 @@ class ConfigurationManager:
     """Manages application configuration with validation."""
 
     DEFAULT_CONFIG = {
-        "camera": {
-            "id": 0,
-            "width": 640,
-            "height": 480,
-            "fps": 30,
-            "flip_horizontal": True
-        },
+        "camera": {"id": 0, "width": 640, "height": 480, "fps": 30, "flip_horizontal": True},
         "processing": {
             "line_thickness": 3,
             "head_radius_factor": 0.075,
             "bg_color": [255, 255, 255],
             "figure_color": [0, 0, 0],
-            "smooth_factor": 0.3
+            "smooth_factor": 0.3,
         },
-        "app": {
-            "debug": False,
-            "show_preview": True,
-            "show_landmarks": False
-        }
+        "app": {"debug": False, "show_preview": True, "show_landmarks": False},
     }
 
-    def __init__(
-        self,
-        config_path: Optional[str] = None,
-        logger: Optional[CustomLogger] = None
-    ):
+    def __init__(self, config_path: Optional[str] = None, logger: Optional[CustomLogger] = None):
         """Initialize configuration manager.
 
         Args:
@@ -63,23 +49,17 @@ class ConfigurationManager:
         """
         if self.config_path.exists():
             try:
-                with open(self.config_path, 'r', encoding='utf-8') as f:
+                with open(self.config_path, "r", encoding="utf-8") as f:
                     loaded_config = json.load(f)
 
                 # Merge with defaults
-                config = self._deep_merge(
-                    self.DEFAULT_CONFIG.copy(),
-                    loaded_config
-                )
+                config = self._deep_merge(self.DEFAULT_CONFIG.copy(), loaded_config)
 
                 self.logger.debug("Config", "Configuration loaded from file")
                 return config
 
             except Exception as e:
-                self.logger.warning(
-                    "Config",
-                    f"Failed to load config: {e}, using defaults"
-                )
+                self.logger.warning("Config", f"Failed to load config: {e}, using defaults")
 
         return self.DEFAULT_CONFIG.copy()
 
@@ -119,7 +99,7 @@ class ConfigurationManager:
             >>> config.get("app.debug", False)
             False
         """
-        parts = key.split('.')
+        parts = key.split(".")
         value = self.config
 
         for part in parts:
@@ -141,7 +121,7 @@ class ConfigurationManager:
             >>> config.set("camera.width", 1280)
             >>> config.set("app.debug", True)
         """
-        parts = key.split('.')
+        parts = key.split(".")
         target = self.config
 
         for part in parts[:-1]:
@@ -161,7 +141,7 @@ class ConfigurationManager:
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(self.config_path, 'w', encoding='utf-8') as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
 
             self.logger.info("Config", f"Configuration saved to {self.config_path}")

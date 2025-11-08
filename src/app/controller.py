@@ -19,11 +19,7 @@ class ApplicationController:
     video pipeline and UI, and handles user input events.
     """
 
-    def __init__(
-        self,
-        config_manager: ConfigurationManager,
-        logger: Optional[CustomLogger] = None
-    ):
+    def __init__(self, config_manager: ConfigurationManager, logger: Optional[CustomLogger] = None):
         """Initialize the application controller.
 
         Args:
@@ -60,9 +56,7 @@ class ApplicationController:
         try:
             # Create video pipeline
             self.pipeline = VideoPipeline(
-                self.config.get_camera_config(),
-                self.config.get_processing_config(),
-                self.logger
+                self.config.get_camera_config(), self.config.get_processing_config(), self.logger
             )
 
             if not self.pipeline.initialize():
@@ -71,19 +65,13 @@ class ApplicationController:
 
             # Create UI manager if preview enabled
             if self.config.get("app.show_preview", True):
-                self.ui = UIManager(
-                    self.config.get_ui_config(),
-                    self.logger
-                )
+                self.ui = UIManager(self.config.get_ui_config(), self.logger)
 
             self.logger.info("Controller", "All components setup successfully")
             return True
 
         except Exception as e:
-            self.logger.error(
-                "Controller",
-                f"Failed to setup application: {str(e)}"
-            )
+            self.logger.error("Controller", f"Failed to setup application: {str(e)}")
             return False
 
     def run(self):
@@ -111,10 +99,7 @@ class ApplicationController:
         except KeyboardInterrupt:
             self.logger.info("Controller", "Interrupted by user")
         except Exception as e:
-            self.logger.error(
-                "Controller",
-                f"Error in main loop: {str(e)}"
-            )
+            self.logger.error("Controller", f"Error in main loop: {str(e)}")
         finally:
             self._cleanup()
 
@@ -136,30 +121,30 @@ class ApplicationController:
             return
 
         # Quit
-        if key in ['q', 'ESC']:
+        if key in ["q", "ESC"]:
             self.logger.info("Controller", "Quit requested by user")
             self.running = False
 
         # Pause/Resume
-        elif key == 'p':
+        elif key == "p":
             self.paused = not self.paused
             status = "paused" if self.paused else "resumed"
             self.logger.info("Controller", f"Application {status}")
 
         # Debug toggle
-        elif key == 'd':
+        elif key == "d":
             debug = not self.config.get("app.debug", False)
             self.config.set("app.debug", debug)
             self.logger.info("Controller", f"Debug mode: {debug}")
 
         # Flip camera
-        elif key == 'f':
+        elif key == "f":
             flip = not self.config.get("camera.flip_horizontal", True)
             self.config.set("camera.flip_horizontal", flip)
             self.logger.info("Controller", f"Camera flip: {flip}")
 
         # Cycle mood
-        elif key == 's':
+        elif key == "s":
             self._cycle_mood()
 
     def _cycle_mood(self):
@@ -185,7 +170,7 @@ class ApplicationController:
             "d: Toggle debug mode",
             "f: Flip camera horizontally",
             "s: Change stick figure mood",
-            "========================="
+            "=========================",
         ]
         for line in controls:
             print(line)
@@ -216,8 +201,7 @@ class ApplicationController:
             avg_fps = self.frame_count / elapsed if elapsed > 0 else 0
             self.logger.info(
                 "Controller",
-                f"Session stats: {self.frame_count} frames, "
-                f"{elapsed:.1f}s, {avg_fps:.1f} FPS"
+                f"Session stats: {self.frame_count} frames, " f"{elapsed:.1f}s, {avg_fps:.1f} FPS",
             )
 
         self.logger.info("Controller", "Cleanup complete")

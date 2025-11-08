@@ -6,21 +6,19 @@ import os
 import platform
 import sys
 import webbrowser
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 # Importujemy tkinter, ale obsługujemy przypadek, gdy nie jest dostępny
 try:
     if platform.system() == "Windows":
         import tkinter as tk
-        from tkinter import ttk
-        from tkinter import messagebox
+        from tkinter import messagebox, ttk
 
         TKINTER_AVAILABLE = True
     else:
         # Na Linux/macOS tkinter nie zawsze jest zainstalowany
         import tkinter as tk
-        from tkinter import ttk
-        from tkinter import messagebox
+        from tkinter import messagebox, ttk
 
         TKINTER_AVAILABLE = True
 except ImportError:
@@ -45,11 +43,11 @@ class SetupDialog:
     """
 
     def __init__(
-            self,
-            results: Dict[str, Any],
-            on_continue: Optional[Callable] = None,
-            on_exit: Optional[Callable] = None,
-            logger=None
+        self,
+        results: Dict[str, Any],
+        on_continue: Optional[Callable] = None,
+        on_exit: Optional[Callable] = None,
+        logger=None,
     ):
         """
         Inicjalizacja dialogu.
@@ -123,11 +121,15 @@ class SetupDialog:
                 # Ustawienie motywu Sun Valley (Fluent Design)
                 sv_ttk.set_theme(self.system_theme)
                 if self.logger:
-                    self.logger.debug("SetupDialog", f"Zastosowano motyw Sun Valley {self.system_theme}")
+                    self.logger.debug(
+                        "SetupDialog", f"Zastosowano motyw Sun Valley {self.system_theme}"
+                    )
                 return
             except Exception as e:
                 if self.logger:
-                    self.logger.warning("SetupDialog", f"Nie udało się zastosować motywu Sun Valley: {str(e)}")
+                    self.logger.warning(
+                        "SetupDialog", f"Nie udało się zastosować motywu Sun Valley: {str(e)}"
+                    )
 
         # Jeśli nie udało się użyć Sun Valley, stosujemy podstawowe style Tkinter
         try:
@@ -157,7 +159,9 @@ class SetupDialog:
 
         except Exception as e:
             if self.logger:
-                self.logger.warning("SetupDialog", f"Nie udało się zastosować podstawowych stylów: {str(e)}")
+                self.logger.warning(
+                    "SetupDialog", f"Nie udało się zastosować podstawowych stylów: {str(e)}"
+                )
 
     def _adjust_window_size(self):
         """
@@ -199,10 +203,7 @@ class SetupDialog:
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
         if self.logger:
-            self.logger.debug(
-                "SetupDialog",
-                f"Dostosowano rozmiar okna do {width}x{height}"
-            )
+            self.logger.debug("SetupDialog", f"Dostosowano rozmiar okna do {width}x{height}")
 
     def _create_widgets(self):
         """
@@ -226,15 +227,25 @@ class SetupDialog:
 
             # Wzmocnione kolory dla lepszego kontrastu
             if self.system_theme == "dark":
-                style.configure("Missing.TLabel", foreground="#ff8080")  # Jaśniejsza czerwień w ciemnym motywie
-                style.configure("OK.TLabel", foreground="#80ff80")  # Jaśniejsza zieleń w ciemnym motywie
+                style.configure(
+                    "Missing.TLabel", foreground="#ff8080"
+                )  # Jaśniejsza czerwień w ciemnym motywie
+                style.configure(
+                    "OK.TLabel", foreground="#80ff80"
+                )  # Jaśniejsza zieleń w ciemnym motywie
                 # Jasny niebieski dla linków w ciemnym motywie
-                style.configure("Link.TLabel", foreground="#40a9ff", font=("Segoe UI", 10, "underline"))
+                style.configure(
+                    "Link.TLabel", foreground="#40a9ff", font=("Segoe UI", 10, "underline")
+                )
             else:
-                style.configure("Missing.TLabel", foreground="#e03131")  # Ciemna czerwień w jasnym motywie
+                style.configure(
+                    "Missing.TLabel", foreground="#e03131"
+                )  # Ciemna czerwień w jasnym motywie
                 style.configure("OK.TLabel", foreground="#2b8a3e")  # Ciemna zieleń w jasnym motywie
                 # Ciemny niebieski dla linków w jasnym motywie
-                style.configure("Link.TLabel", foreground="#0366d6", font=("Segoe UI", 10, "underline"))
+                style.configure(
+                    "Link.TLabel", foreground="#0366d6", font=("Segoe UI", 10, "underline")
+                )
 
         # Główny kontener z paddingiem
         main_frame = ttk.Frame(self.root, padding="20")
@@ -242,9 +253,7 @@ class SetupDialog:
 
         # Tytuł
         title_label = ttk.Label(
-            main_frame,
-            text="Stick Figure Webcam - Wymagania Systemowe",
-            style="Title.TLabel"
+            main_frame, text="Stick Figure Webcam - Wymagania Systemowe", style="Title.TLabel"
         )
         title_label.pack(pady=(0, 10))
 
@@ -278,9 +287,7 @@ class SetupDialog:
         # Instrukcje instalacji
         if not self.results["all_met"] and self.results["instructions"]:
             instructions_label = ttk.Label(
-                content_frame,
-                text="Instrukcje instalacji:",
-                style="Header.TLabel"
+                content_frame, text="Instrukcje instalacji:", style="Header.TLabel"
             )
             instructions_label.pack(anchor="w", pady=(20, 10))
 
@@ -292,16 +299,10 @@ class SetupDialog:
 
         # Zawsze wyświetlaj obydwa przyciski
         continue_button = ttk.Button(
-            button_frame,
-            text="Kontynuuj mimo to",
-            command=self._on_continue
+            button_frame, text="Kontynuuj mimo to", command=self._on_continue
         )
 
-        exit_button = ttk.Button(
-            button_frame,
-            text="Zamknij aplikację",
-            command=self._on_exit
-        )
+        exit_button = ttk.Button(button_frame, text="Zamknij aplikację", command=self._on_exit)
 
         # Przycisk wyjścia po lewej, kontynuacji po prawej
         exit_button.pack(side=tk.LEFT, padx=5)
@@ -312,7 +313,7 @@ class SetupDialog:
             warning_label = ttk.Label(
                 main_frame,
                 text="Uwaga: Aplikacja może nie działać poprawnie bez wymaganych komponentów!",
-                style="Missing.TLabel"
+                style="Missing.TLabel",
             )
             warning_label.pack(pady=(10, 0))
 
@@ -370,16 +371,14 @@ class SetupDialog:
                 # Zielony dla pozytywnych komunikatów
                 message_color = "#80ff80" if self.system_theme == "dark" else "#2b8a3e"
             elif result["status"] is False and (
-                    "błąd" in result["message"].lower() or "nie " in result["message"].lower()):
+                "błąd" in result["message"].lower() or "nie " in result["message"].lower()
+            ):
                 # Czerwony dla negatywnych komunikatów
                 message_color = "#ff8080" if self.system_theme == "dark" else "#e03131"
 
             # Tworzenie etykiety z bezpośrednim ustawieniem koloru
             desc_label = ttk.Label(
-                component_frame,
-                text=result["message"],
-                foreground=message_color,
-                wraplength=600
+                component_frame, text=result["message"], foreground=message_color, wraplength=600
             )
             desc_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
@@ -397,7 +396,7 @@ class SetupDialog:
                 "virtual_camera": "Wirtualna kamera",
                 "mediapipe": "MediaPipe",
                 "obs": "OBS Studio",
-                "v4l2loopback": "v4l2loopback"
+                "v4l2loopback": "v4l2loopback",
             }.get(component, component)
 
             # Ramka dla komponentu
@@ -435,20 +434,17 @@ class SetupDialog:
                         text=link,
                         foreground=link_color,
                         font=("Segoe UI", 10, "underline"),
-                        cursor="hand2"
+                        cursor="hand2",
                     )
                     link_label.pack(side=tk.LEFT, anchor="nw")
 
                     # Obsługa kliknięcia linku
-                    link_label.bind(
-                        "<Button-1>",
-                        lambda e, url=link: webbrowser.open_new(url)
-                    )
+                    link_label.bind("<Button-1>", lambda e, url=link: webbrowser.open_new(url))
                 else:
                     instr_label = ttk.Label(
                         instruction_frame,
                         text=f"{i + 1}. {instruction}",
-                        wraplength=800  # Zwiększona szerokość zawijania
+                        wraplength=800,  # Zwiększona szerokość zawijania
                     )
                     instr_label.pack(anchor="w")
 
@@ -458,8 +454,7 @@ class SetupDialog:
         """
         if self.logger:
             self.logger.info(
-                "SetupDialog",
-                "Użytkownik zdecydował się kontynuować mimo brakujących komponentów"
+                "SetupDialog", "Użytkownik zdecydował się kontynuować mimo brakujących komponentów"
             )
 
         if self.on_continue:
@@ -492,8 +487,11 @@ class SetupDialog:
         Returns:
             str: Pełna ścieżka do zasobu
         """
-        base_path = getattr(sys, '_MEIPASS',
-                            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        base_path = getattr(
+            sys,
+            "_MEIPASS",
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        )
         return os.path.join(base_path, "resources", relative_path)
 
     def _show_console_message(self):
@@ -510,7 +508,7 @@ class SetupDialog:
             "virtual_camera": "Wirtualna kamera",
             "mediapipe": "MediaPipe",
             "obs": "OBS Studio",
-            "v4l2loopback": "v4l2loopback"
+            "v4l2loopback": "v4l2loopback",
         }
 
         for component, result in self.results["results"].items():
@@ -551,7 +549,7 @@ class SetupDialog:
         if not self.results["all_met"]:
             response = input("Czy chcesz kontynuować mimo to? (t/n): ").lower()
 
-            if response == 't' or response == 'tak':
+            if response == "t" or response == "tak":
                 if self.on_continue:
                     self.on_continue()
             else:
@@ -565,10 +563,10 @@ class SetupDialog:
 
 # Funkcja pomocnicza do użycia w main.py
 def show_setup_dialog(
-        results: Dict[str, Any],
-        on_continue: Optional[Callable] = None,
-        on_exit: Optional[Callable] = None,
-        logger=None
+    results: Dict[str, Any],
+    on_continue: Optional[Callable] = None,
+    on_exit: Optional[Callable] = None,
+    logger=None,
 ):
     """
     Wyświetla dialog konfiguracyjny dla brakujących komponentów.

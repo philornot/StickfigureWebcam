@@ -25,52 +25,21 @@ def parse_arguments():
         description="Stick Figure Webcam - Transform yourself into an animated stick figure"
     )
 
-    parser.add_argument(
-        "-c", "--camera",
-        type=int,
-        default=None,
-        help="Camera ID (default: 0)"
-    )
+    parser.add_argument("-c", "--camera", type=int, default=None, help="Camera ID (default: 0)")
+
+    parser.add_argument("-w", "--width", type=int, default=None, help="Video width (default: 640)")
 
     parser.add_argument(
-        "-w", "--width",
-        type=int,
-        default=None,
-        help="Video width (default: 640)"
+        "-H", "--height", type=int, default=None, help="Video height (default: 480)"
     )
 
-    parser.add_argument(
-        "-H", "--height",
-        type=int,
-        default=None,
-        help="Video height (default: 480)"
-    )
+    parser.add_argument("-f", "--fps", type=int, default=None, help="Target FPS (default: 30)")
 
-    parser.add_argument(
-        "-f", "--fps",
-        type=int,
-        default=None,
-        help="Target FPS (default: 30)"
-    )
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
 
-    parser.add_argument(
-        "-d", "--debug",
-        action="store_true",
-        help="Enable debug mode"
-    )
+    parser.add_argument("--no-preview", action="store_true", help="Disable preview windows")
 
-    parser.add_argument(
-        "--no-preview",
-        action="store_true",
-        help="Disable preview windows"
-    )
-
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to configuration file"
-    )
+    parser.add_argument("--config", type=str, default=None, help="Path to configuration file")
 
     return parser.parse_args()
 
@@ -117,10 +86,7 @@ def main():
 
     try:
         # Load configuration
-        config = ConfigurationManager(
-            config_path=args.config,
-            logger=logger
-        )
+        config = ConfigurationManager(config_path=args.config, logger=logger)
 
         # Apply CLI overrides
         apply_cli_overrides(config, args)

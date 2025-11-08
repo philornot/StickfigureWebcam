@@ -30,7 +30,7 @@ class TestStickFigureRenderer(unittest.TestCase):
             figure_color=(0, 0, 0),
             chair_color=(150, 75, 0),
             smooth_factor=0.3,
-            smoothing_history=3
+            smoothing_history=3,
         )
 
     def test_initialization(self):
@@ -100,20 +100,20 @@ class TestStickFigureRenderer(unittest.TestCase):
                 "mouth_open": 0.2,
                 "smile": 0.6,
                 "left_eye_open": 1.0,
-                "right_eye_open": 1.0
+                "right_eye_open": 1.0,
             },
             "hands_data": {
                 "left_hand": {
                     "wrist": landmarks[self.renderer.LEFT_WRIST],
                     "elbow": landmarks[self.renderer.LEFT_ELBOW],
-                    "is_left": True
+                    "is_left": True,
                 },
                 "right_hand": {
                     "wrist": landmarks[self.renderer.RIGHT_WRIST],
                     "elbow": landmarks[self.renderer.RIGHT_ELBOW],
-                    "is_left": False
-                }
-            }
+                    "is_left": False,
+                },
+            },
         }
 
         # Renderujemy stick figure z górną częścią ciała
@@ -127,9 +127,13 @@ class TestStickFigureRenderer(unittest.TestCase):
 
         # Pewne punkty na obrazie powinny mieć kolor stick figure (czarny)
         # Na przykład w miejscu głowy
-        nose_x, nose_y = int(landmarks[self.renderer.NOSE][0] * 640), int(landmarks[self.renderer.NOSE][1] * 480)
+        nose_x, nose_y = int(landmarks[self.renderer.NOSE][0] * 640), int(
+            landmarks[self.renderer.NOSE][1] * 480
+        )
         # Sprawdzamy obszar wokół nosa - powinien mieć piksele koloru innego niż tło
-        head_area = result[max(0, nose_y - 10):min(480, nose_y + 10), max(0, nose_x - 10):min(640, nose_x + 10)]
+        head_area = result[
+            max(0, nose_y - 10) : min(480, nose_y + 10), max(0, nose_x - 10) : min(640, nose_x + 10)
+        ]
         self.assertFalse(np.all(head_area == 255))
 
     def test_set_colors(self):
@@ -143,10 +147,7 @@ class TestStickFigureRenderer(unittest.TestCase):
         new_figure_color = (50, 50, 50)
 
         # Ustawiamy nowe kolory
-        self.renderer.set_colors(
-            bg_color=new_bg_color,
-            figure_color=new_figure_color
-        )
+        self.renderer.set_colors(bg_color=new_bg_color, figure_color=new_figure_color)
 
         # Sprawdzamy czy kolory zostały zmienione
         self.assertEqual(self.renderer.bg_color, new_bg_color)
@@ -251,8 +252,8 @@ class TestStickFigureRenderer(unittest.TestCase):
         self.renderer.render(face_data)
 
         # Sprawdzamy czy historia się wypełniła
-        self.assertTrue(hasattr(self.renderer, 'last_left_elbow'))
-        self.assertTrue(hasattr(self.renderer, 'last_right_elbow'))
+        self.assertTrue(hasattr(self.renderer, "last_left_elbow"))
+        self.assertTrue(hasattr(self.renderer, "last_right_elbow"))
 
         # Resetujemy stan
         self.renderer.reset()

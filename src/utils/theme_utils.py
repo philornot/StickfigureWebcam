@@ -6,7 +6,7 @@ import ctypes
 import os
 import platform
 import subprocess
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 
 def detect_system_theme() -> str:
@@ -29,6 +29,7 @@ def detect_system_theme() -> str:
 
                 try:
                     import winreg
+
                     key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SUBKEY)
                     value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
                     winreg.CloseKey(key)
@@ -46,7 +47,7 @@ def detect_system_theme() -> str:
                 result = subprocess.run(
                     ["defaults", "read", "-g", "AppleInterfaceStyle"],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
                 # Jeśli wynikiem jest "Dark", użytkownik ma włączony ciemny motyw
                 # Jeśli polecenie zwróci błąd, użytkownik ma jasny motyw
@@ -61,7 +62,7 @@ def detect_system_theme() -> str:
                 result = subprocess.run(
                     ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
                 if "dark" in result.stdout.lower():
                     return "dark"
@@ -105,7 +106,7 @@ def get_theme_colors(theme: str = None) -> Tuple[str, str, str, str, str]:
             "#1890ff",  # Podświetlenie: jasny niebieski
             "#1e1e1e",  # Tło: ciemny szary
             "#80ff80",  # Sukces: jaskrawa zieleń
-            "#ff8080"  # Błąd: jaskrawa czerwień
+            "#ff8080",  # Błąd: jaskrawa czerwień
         )
     else:
         # Jasny motyw
@@ -114,7 +115,7 @@ def get_theme_colors(theme: str = None) -> Tuple[str, str, str, str, str]:
             "#0366d6",  # Podświetlenie: ciemny niebieski
             "#f0f0f0",  # Tło: jasny szary
             "#2b8a3e",  # Sukces: ciemna zieleń
-            "#e03131"  # Błąd: ciemna czerwień
+            "#e03131",  # Błąd: ciemna czerwień
         )
 
 
@@ -135,12 +136,14 @@ def apply_theme_to_tkinter(root, theme: Optional[str] = None) -> bool:
     try:
         # Próbujemy użyć Sun Valley Tkinter Theme (sv_ttk)
         import sv_ttk
+
         sv_ttk.set_theme(theme)
         return True
     except ImportError:
         # Jeśli sv_ttk nie jest dostępny, stosujemy podstawowe style
         try:
             from tkinter import ttk
+
             style = ttk.Style()
 
             text_color, accent_color, bg_color, success_color, error_color = get_theme_colors(theme)

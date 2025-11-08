@@ -10,17 +10,17 @@ This package contains the main application components:
 - DependencyContainer: Dependency injection
 """
 
-from src.app.controller import ApplicationController
-from src.app.video_pipeline import VideoPipeline
-from src.app.ui_manager import UIManager
 from src.app.config_manager import ConfigurationManager
+from src.app.controller import ApplicationController
 from src.app.dependencies import DependencyContainer, create_container
+from src.app.ui_manager import UIManager
+from src.app.video_pipeline import VideoPipeline
 
 __all__ = [
-    'ApplicationController',
-    'VideoPipeline',
-    'UIManager',
-    'ConfigurationManager',
-    'DependencyContainer',
-    'create_container'
+    "ApplicationController",
+    "VideoPipeline",
+    "UIManager",
+    "ConfigurationManager",
+    "DependencyContainer",
+    "create_container",
 ]

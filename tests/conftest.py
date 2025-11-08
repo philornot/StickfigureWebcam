@@ -9,11 +9,12 @@ i może zawierać wspólne fixtures dla testów.
 
 import os
 import sys
+
 import pytest
 
 # Dodajemy główny katalog projektu do ścieżki systemowej,
 # aby moduły projektu były importowalne w testach
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 @pytest.fixture

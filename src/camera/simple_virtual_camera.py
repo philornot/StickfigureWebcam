@@ -5,6 +5,7 @@
 import platform
 import time
 from typing import Optional, Tuple
+
 import numpy as np
 
 from src.utils.custom_logger import CustomLogger
@@ -22,7 +23,7 @@ class SimpleVirtualCamera:
         width: int = 640,
         height: int = 480,
         fps: int = 30,
-        logger: Optional[CustomLogger] = None
+        logger: Optional[CustomLogger] = None,
     ):
         """Initialize virtual camera.
 
@@ -57,8 +58,7 @@ class SimpleVirtualCamera:
             import pyvirtualcam
         except ImportError:
             raise RuntimeError(
-                "pyvirtualcam is not installed. "
-                "Install it with: pip install pyvirtualcam"
+                "pyvirtualcam is not installed. " "Install it with: pip install pyvirtualcam"
             )
 
         # Get device name based on system
@@ -72,23 +72,20 @@ class SimpleVirtualCamera:
                     height=self.height,
                     fps=self.fps,
                     fmt=pyvirtualcam.PixelFormat.BGR,
-                    device=device_name
+                    device=device_name,
                 )
             else:
                 self.camera = pyvirtualcam.Camera(
                     width=self.width,
                     height=self.height,
                     fps=self.fps,
-                    fmt=pyvirtualcam.PixelFormat.BGR
+                    fmt=pyvirtualcam.PixelFormat.BGR,
                 )
 
             self.backend = self.camera.backend
-            self.device_name = getattr(self.camera, 'device', 'default')
+            self.device_name = getattr(self.camera, "device", "default")
 
-            self.logger.info(
-                "VirtualCamera",
-                f"Initialized: {self.backend} ({self.device_name})"
-            )
+            self.logger.info("VirtualCamera", f"Initialized: {self.backend} ({self.device_name})")
 
         except Exception as e:
             error_msg = self._create_helpful_error_message(e)
@@ -120,8 +117,7 @@ class SimpleVirtualCamera:
 
         if self.system == "Windows":
             return (
-                base_msg +
-                "Make sure OBS Studio is installed and Virtual Camera is started:\n"
+                base_msg + "Make sure OBS Studio is installed and Virtual Camera is started:\n"
                 "1. Install OBS Studio from https://obsproject.com\n"
                 "2. Open OBS Studio\n"
                 "3. Go to Tools → Start Virtual Camera\n"
@@ -130,8 +126,7 @@ class SimpleVirtualCamera:
 
         elif self.system == "Linux":
             return (
-                base_msg +
-                "Make sure v4l2loopback kernel module is loaded:\n"
+                base_msg + "Make sure v4l2loopback kernel module is loaded:\n"
                 "1. Install: sudo apt-get install v4l2loopback-dkms\n"
                 "2. Load module: sudo modprobe v4l2loopback\n"
                 "3. Verify: ls /dev/video*\n"
@@ -140,8 +135,7 @@ class SimpleVirtualCamera:
 
         else:  # macOS
             return (
-                base_msg +
-                "Make sure OBS Studio with virtual camera plugin is installed:\n"
+                base_msg + "Make sure OBS Studio with virtual camera plugin is installed:\n"
                 "1. Install OBS Studio from https://obsproject.com\n"
                 "2. Install obs-mac-virtualcam plugin\n"
                 "3. Open OBS and start Virtual Camera\n"
@@ -163,6 +157,7 @@ class SimpleVirtualCamera:
         # Resize if needed
         if frame.shape[1] != self.width or frame.shape[0] != self.height:
             import cv2
+
             frame = cv2.resize(frame, (self.width, self.height))
 
         try:
@@ -177,10 +172,7 @@ class SimpleVirtualCamera:
                 self.camera.close()
                 self.logger.info("VirtualCamera", "Closed successfully")
             except Exception as e:
-                self.logger.warning(
-                    "VirtualCamera",
-                    f"Error during close: {str(e)}"
-                )
+                self.logger.warning("VirtualCamera", f"Error during close: {str(e)}")
             finally:
                 self.camera = None
 
@@ -202,10 +194,7 @@ class SimpleVirtualCamera:
 
 
 def try_create_virtual_camera(
-    width: int = 640,
-    height: int = 480,
-    fps: int = 30,
-    logger: Optional[CustomLogger] = None
+    width: int = 640, height: int = 480, fps: int = 30, logger: Optional[CustomLogger] = None
 ) -> Optional[SimpleVirtualCamera]:
     """Try to create virtual camera, return None on failure.
 

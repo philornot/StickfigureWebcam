@@ -6,9 +6,10 @@ Testy jednostkowe dla detektora pozy (PoseDetector).
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, Mock
-import numpy as np
+from unittest.mock import MagicMock, Mock, patch
+
 import cv2
+import numpy as np
 
 from src.pose.pose_detector import PoseDetector
 
@@ -21,9 +22,9 @@ class TestPoseDetector(unittest.TestCase):
     def setUp(self):
         """Inicjalizacja przed każdym testem."""
         # Patchujemy MediaPipe, aby nie musiał rzeczywiście inicjalizować modeli
-        self.mp_pose_patch = patch('mediapipe.solutions.pose')
-        self.mp_drawing_patch = patch('mediapipe.solutions.drawing_utils')
-        self.mp_drawing_styles_patch = patch('mediapipe.solutions.drawing_styles')
+        self.mp_pose_patch = patch("mediapipe.solutions.pose")
+        self.mp_drawing_patch = patch("mediapipe.solutions.drawing_utils")
+        self.mp_drawing_styles_patch = patch("mediapipe.solutions.drawing_styles")
 
         self.mock_mp_pose = self.mp_pose_patch.start()
         self.mock_mp_drawing = self.mp_drawing_patch.start()
@@ -42,7 +43,7 @@ class TestPoseDetector(unittest.TestCase):
             min_tracking_confidence=0.5,
             model_complexity=1,
             smooth_landmarks=True,
-            logger=self.mock_logger
+            logger=self.mock_logger,
         )
 
     def tearDown(self):
@@ -66,7 +67,7 @@ class TestPoseDetector(unittest.TestCase):
             smooth_landmarks=True,
             enable_segmentation=False,
             min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_tracking_confidence=0.5,
         )
 
         # Sprawdzamy czy logger został wywołany
@@ -139,9 +140,7 @@ class TestPoseDetector(unittest.TestCase):
 
         # Wywołujemy metodę rysowania
         result_image = self.detector.draw_pose_on_image(
-            test_image,
-            landmarks,
-            draw_connections=True
+            test_image, landmarks, draw_connections=True
         )
 
         # Sprawdzamy czy wynikowy obraz ma właściwe wymiary
@@ -158,7 +157,7 @@ class TestPoseDetector(unittest.TestCase):
         landmarks = [
             (0.0, 0.0, 0.0, 1.0),  # punkt 0
             (0.0, 1.0, 0.0, 1.0),  # punkt 1 (wierzchołek kąta)
-            (1.0, 1.0, 0.0, 1.0)  # punkt 2
+            (1.0, 1.0, 0.0, 1.0),  # punkt 2
         ]
 
         # Obliczamy kąt
@@ -171,7 +170,7 @@ class TestPoseDetector(unittest.TestCase):
         landmarks = [
             (0.0, 0.0, 0.0, 1.0),  # punkt 0
             (0.0, 0.0, 0.0, 1.0),  # punkt 1 (wierzchołek kąta)
-            (1.0, 1.0, 0.0, 1.0)  # punkt 2
+            (1.0, 1.0, 0.0, 1.0),  # punkt 2
         ]
 
         # Obliczamy kąt
@@ -186,7 +185,7 @@ class TestPoseDetector(unittest.TestCase):
         landmarks = [
             (0.1, 0.2, 0.0, 0.9),  # punkt 0
             (0.3, 0.4, 0.0, 0.8),  # punkt 1
-            (0.5, 0.6, 0.0, 0.7)  # punkt 2
+            (0.5, 0.6, 0.0, 0.7),  # punkt 2
         ]
 
         # Pobieramy pozycję punktu 1

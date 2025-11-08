@@ -4,7 +4,7 @@
 
 import platform
 import time
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -21,14 +21,14 @@ class VirtualCamera:
     """
 
     def __init__(
-            self,
-            width: int = 640,
-            height: int = 480,
-            fps: int = 30,
-            device_name: str = None,  # Domyślnie None dla auto-wykrywania
-            logger: Optional[CustomLogger] = None,
-            max_retries: int = 3,  # Maksymalna liczba prób
-            retry_delay: float = 1.0  # Opóźnienie między próbami
+        self,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 30,
+        device_name: str = None,  # Domyślnie None dla auto-wykrywania
+        logger: Optional[CustomLogger] = None,
+        max_retries: int = 3,  # Maksymalna liczba prób
+        retry_delay: float = 1.0,  # Opóźnienie między próbami
     ):
         """
         Inicjalizacja wirtualnej kamery.
@@ -65,7 +65,7 @@ class VirtualCamera:
             "fps": fps,
             "backend": "unknown",
             "system": platform.system(),
-            "available_devices": []
+            "available_devices": [],
         }
 
         self.fps_sleep_time = 1.0 / fps if fps > 0 else 0
@@ -81,18 +81,18 @@ class VirtualCamera:
             # Próba pobrania dostępnych backenów
             available_backends = []
             try:
-                if hasattr(pyvirtualcam, 'get_available_backends'):
+                if hasattr(pyvirtualcam, "get_available_backends"):
                     available_backends = pyvirtualcam.get_available_backends()
                     self.logger.debug(
                         "VirtualCamera",
                         f"Dostępne backendy: {available_backends}",
-                        log_type="VIRTUAL_CAM"
+                        log_type="VIRTUAL_CAM",
                     )
             except Exception as e:
                 self.logger.warning(
                     "VirtualCamera",
                     f"Błąd podczas pobierania dostępnych backenów: {str(e)}",
-                    log_type="VIRTUAL_CAM"
+                    log_type="VIRTUAL_CAM",
                 )
 
             # Próba automatycznego wykrycia nazw urządzeń
@@ -103,7 +103,7 @@ class VirtualCamera:
             self.logger.warning(
                 "VirtualCamera",
                 f"Błąd podczas wykrywania dostępnych urządzeń: {str(e)}",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
 
     def _get_system_specific_device_names(self, system: str) -> List[str]:
@@ -124,22 +124,17 @@ class VirtualCamera:
                 "Unity Video Capture",
                 "XSplit VCam",
                 "e2eSoft VCam",
-                "Stick Figure Webcam"
+                "Stick Figure Webcam",
             ]
         elif system == "Darwin":  # macOS
-            return [
-                "OBS Virtual Camera",
-                "NDI Video",
-                "CamTwist",
-                "Stick Figure Webcam"
-            ]
+            return ["OBS Virtual Camera", "NDI Video", "CamTwist", "Stick Figure Webcam"]
         elif system == "Linux":
             return [
                 "/dev/video0",
                 "/dev/video1",
                 "/dev/video2",
                 "/dev/video20",
-                "Stick Figure Webcam"
+                "Stick Figure Webcam",
             ]
         else:
             return ["Stick Figure Webcam"]
@@ -165,7 +160,7 @@ class VirtualCamera:
                 "VirtualCamera",
                 f"Inicjalizacja wirtualnej kamery (próba {self.retry_count}/{self.max_retries}): "
                 f"{self.width}x{self.height} @ {self.fps} FPS",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
 
             # Określenie formatu pikseli - OpenCV używa BGR
@@ -189,16 +184,12 @@ class VirtualCamera:
             # Próba utworzenia wirtualnej kamery z automatyczną detekcją backendu
             try:
                 self.cam = pyvirtualcam.Camera(
-                    width=self.width,
-                    height=self.height,
-                    fps=self.fps,
-                    fmt=fmt,
-                    **backend_params
+                    width=self.width, height=self.height, fps=self.fps, fmt=fmt, **backend_params
                 )
 
                 # Aktualizacja informacji o backendzie i rzeczywistej nazwie urządzenia
                 self.camera_info["backend"] = self.cam.backend
-                if hasattr(self.cam, 'device'):
+                if hasattr(self.cam, "device"):
                     self.camera_info["name"] = self.cam.device
 
                 self.is_initialized = True
@@ -208,7 +199,7 @@ class VirtualCamera:
                     "VirtualCamera",
                     f"Wirtualna kamera uruchomiona z backendem: {self.cam.backend}, "
                     f"urządzenie: {getattr(self.cam, 'device', 'default')}",
-                    log_type="VIRTUAL_CAM"
+                    log_type="VIRTUAL_CAM",
                 )
 
                 self.last_frame_time = time.time()
@@ -228,7 +219,7 @@ class VirtualCamera:
                             self.logger.debug(
                                 "VirtualCamera",
                                 f"Próba inicjalizacji z alternatywną nazwą urządzenia: {device_name}",
-                                log_type="VIRTUAL_CAM"
+                                log_type="VIRTUAL_CAM",
                             )
 
                             self.cam = pyvirtualcam.Camera(
@@ -236,7 +227,7 @@ class VirtualCamera:
                                 height=self.height,
                                 fps=self.fps,
                                 fmt=fmt,
-                                device=device_name
+                                device=device_name,
                             )
 
                             # Sukces - zapisujemy informacje
@@ -249,7 +240,7 @@ class VirtualCamera:
                                 "VirtualCamera",
                                 f"Wirtualna kamera uruchomiona z alternatywną nazwą: {device_name}, "
                                 f"backend: {self.cam.backend}",
-                                log_type="VIRTUAL_CAM"
+                                log_type="VIRTUAL_CAM",
                             )
 
                             self.last_frame_time = time.time()
@@ -261,7 +252,7 @@ class VirtualCamera:
                             self.logger.debug(
                                 "VirtualCamera",
                                 f"Próba z urządzeniem {device_name} nie powiodła się: {str(e)}",
-                                log_type="VIRTUAL_CAM"
+                                log_type="VIRTUAL_CAM",
                             )
 
                     # Żadna alternatywna nazwa nie zadziałała, zgłaszamy oryginalny błąd
@@ -276,7 +267,7 @@ class VirtualCamera:
                 "VirtualCamera",
                 f"Błąd podczas inicjalizacji wirtualnej kamery: {str(e)}",
                 log_type="VIRTUAL_CAM",
-                error=error_info
+                error=error_info,
             )
             self.logger.virtual_camera_status(False, error_info)
 
@@ -290,7 +281,7 @@ class VirtualCamera:
                     "VirtualCamera",
                     f"Wyczerpano limit {self.max_retries} prób inicjalizacji wirtualnej kamery. "
                     "Rezygnuję z dalszych prób.",
-                    log_type="VIRTUAL_CAM"
+                    log_type="VIRTUAL_CAM",
                 )
             else:
                 # Czekamy przed kolejną próbą
@@ -312,7 +303,7 @@ class VirtualCamera:
                 "1. Otwórz OBS Studio. "
                 "2. W menu wybierz Narzędzia -> Virtual Camera. "
                 "3. Kliknij 'Start Virtual Camera'.",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
         elif system == "Darwin":  # macOS
             self.logger.info(
@@ -323,7 +314,7 @@ class VirtualCamera:
                 "1. Zainstaluj OBS ze strony https://obsproject.com "
                 "2. Zainstaluj plugin obs-mac-virtualcam "
                 "3. Uruchom OBS i włącz Virtual Camera",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
         elif system == "Linux":
             self.logger.info(
@@ -333,7 +324,7 @@ class VirtualCamera:
                 "sudo apt-get install v4l2loopback-dkms\n"
                 "sudo modprobe v4l2loopback\n"
                 "Po załadowaniu modułu, sprawdź dostępne urządzenia: ls -l /dev/video*",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
 
     def send_frame(self, frame: np.ndarray) -> bool:
@@ -359,7 +350,7 @@ class VirtualCamera:
             self.logger.warning(
                 "VirtualCamera",
                 "Próba wysłania klatki do niezainicjalizowanej kamery",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
             return False
 
@@ -395,7 +386,7 @@ class VirtualCamera:
                 self.logger.debug(
                     "VirtualCamera",
                     f"Wysłano {self.frame_count} klatek, aktualny FPS: {real_fps:.1f}",
-                    log_type="VIRTUAL_CAM"
+                    log_type="VIRTUAL_CAM",
                 )
 
             self.performance.stop_timer()
@@ -415,7 +406,7 @@ class VirtualCamera:
                 "VirtualCamera",
                 f"Błąd podczas wysyłania klatki: {str(e)}",
                 log_type="VIRTUAL_CAM",
-                error={"error": str(e)}
+                error={"error": str(e)},
             )
 
             # Resetujemy stan kamery, aby spróbować ponownej inicjalizacji
@@ -477,7 +468,7 @@ class VirtualCamera:
             (255, 255, 0),  # Turkusowy
             (255, 0, 255),  # Magenta
             (0, 255, 255),  # Żółty
-            (255, 255, 255)  # Biały
+            (255, 255, 255),  # Biały
         ]
 
         for i, color in enumerate(colors):
@@ -504,7 +495,9 @@ class VirtualCamera:
 
         # Status inicjalizacji - czerwony jeśli nie działa, zielony jeśli działa
         status_color = (0, 255, 0) if self.is_initialized else (0, 0, 255)  # Zielony/Czerwony
-        status_text = "VIRTUAL CAMERA READY" if self.is_initialized else "VIRTUAL CAMERA NOT WORKING"
+        status_text = (
+            "VIRTUAL CAMERA READY" if self.is_initialized else "VIRTUAL CAMERA NOT WORKING"
+        )
         status_text_size, _ = cv2.getTextSize(status_text, font, 0.8, 2)
         status_x = (self.width - status_text_size[0]) // 2
         status_y = (self.height + status_text_size[1]) // 2 + 30
@@ -545,7 +538,7 @@ class VirtualCamera:
                 "VirtualCamera",
                 "Zmiana rozdzielczości wymaga ponownej inicjalizacji kamery. "
                 "Zamykanie aktualnej instancji...",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
             self.close()
 
@@ -561,7 +554,7 @@ class VirtualCamera:
             "VirtualCamera",
             f"Ustawiono nową rozdzielczość: {width}x{height}. "
             "Kamera zostanie zainicjalizowana przy następnym użyciu.",
-            log_type="VIRTUAL_CAM"
+            log_type="VIRTUAL_CAM",
         )
 
         return True
@@ -582,7 +575,7 @@ class VirtualCamera:
                 "VirtualCamera",
                 "Zmiana FPS wymaga ponownej inicjalizacji kamery. "
                 "Zamykanie aktualnej instancji...",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
             self.close()
 
@@ -598,7 +591,7 @@ class VirtualCamera:
             "VirtualCamera",
             f"Ustawiono nowy FPS: {fps}. "
             "Kamera zostanie zainicjalizowana przy następnym użyciu.",
-            log_type="VIRTUAL_CAM"
+            log_type="VIRTUAL_CAM",
         )
 
         return True
@@ -617,9 +610,7 @@ class VirtualCamera:
             self.retry_count = 0
 
             self.logger.info(
-                "VirtualCamera",
-                "Wirtualna kamera została zresetowana",
-                log_type="VIRTUAL_CAM"
+                "VirtualCamera", "Wirtualna kamera została zresetowana", log_type="VIRTUAL_CAM"
             )
 
             return True
@@ -627,7 +618,7 @@ class VirtualCamera:
             self.logger.error(
                 "VirtualCamera",
                 f"Błąd podczas resetowania wirtualnej kamery: {str(e)}",
-                log_type="VIRTUAL_CAM"
+                log_type="VIRTUAL_CAM",
             )
             return False
 
@@ -649,9 +640,7 @@ class VirtualCamera:
                 self.is_initialized = False
 
                 self.logger.info(
-                    "VirtualCamera",
-                    "Wirtualna kamera zamknięta",
-                    log_type="VIRTUAL_CAM"
+                    "VirtualCamera", "Wirtualna kamera zamknięta", log_type="VIRTUAL_CAM"
                 )
 
             except Exception as e:
@@ -659,7 +648,7 @@ class VirtualCamera:
                     "VirtualCamera",
                     f"Błąd podczas zamykania wirtualnej kamery: {str(e)}",
                     log_type="VIRTUAL_CAM",
-                    error={"error": str(e)}
+                    error={"error": str(e)},
                 )
 
     def __del__(self):

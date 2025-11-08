@@ -37,7 +37,7 @@ class TestHandTracking(unittest.TestCase):
             chair_color=(150, 75, 0),
             smooth_factor=0.3,
             smoothing_history=3,
-            logger=self.mock_logger
+            logger=self.mock_logger,
         )
 
     def test_update_arm_positions_without_data(self):
@@ -75,13 +75,13 @@ class TestHandTracking(unittest.TestCase):
                 "left_hand": {
                     "wrist": (0.3, 0.6, 0.0, 1.0),
                     "elbow": (0.35, 0.4, 0.0, 1.0),
-                    "is_left": True
+                    "is_left": True,
                 },
                 "right_hand": {
                     "wrist": (0.7, 0.6, 0.0, 1.0),
                     "elbow": (0.65, 0.4, 0.0, 1.0),
-                    "is_left": False
-                }
+                    "is_left": False,
+                },
             }
         }
 
@@ -112,7 +112,7 @@ class TestHandTracking(unittest.TestCase):
                 "left_hand": {
                     "wrist": (0.3, 0.6, 0.0, 1.0),
                     "elbow": (0.35, 0.4, 0.0, 1.0),
-                    "is_left": True
+                    "is_left": True,
                 }
             }
         }
@@ -169,7 +169,7 @@ class TestHandTracking(unittest.TestCase):
                 "left_hand": {
                     "wrist": (0.2, 0.5, 0.0, 1.0),  # ~(128, 240)
                     "elbow": (0.3, 0.35, 0.0, 1.0),  # ~(192, 168)
-                    "is_left": True
+                    "is_left": True,
                 }
             }
         }
@@ -178,12 +178,14 @@ class TestHandTracking(unittest.TestCase):
         positions = []
         for _ in range(5):
             self.renderer._update_arm_positions(hands_data)
-            positions.append((
-                self.renderer.last_left_elbow[0],
-                self.renderer.last_left_elbow[1],
-                self.renderer.last_left_wrist[0],
-                self.renderer.last_left_wrist[1]
-            ))
+            positions.append(
+                (
+                    self.renderer.last_left_elbow[0],
+                    self.renderer.last_left_elbow[1],
+                    self.renderer.last_left_wrist[0],
+                    self.renderer.last_left_wrist[1],
+                )
+            )
 
         # Sprawdzamy czy pozycje zmieniają się stopniowo
         for i in range(1, len(positions)):

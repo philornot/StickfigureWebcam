@@ -29,7 +29,7 @@ class TestPartialVisibility(unittest.TestCase):
             smoothing_factor=0.7,
             temporal_smoothing=3,
             partial_visibility_bias=0.9,  # Wysoka preferencja siedzenia
-            logger=self.mock_logger
+            logger=self.mock_logger,
         )
 
     def create_upper_body_only_landmarks(self):
@@ -87,16 +87,24 @@ class TestPartialVisibility(unittest.TestCase):
             result = self.analyzer.analyze_posture(landmarks, 480, 640)
 
         # Sprawdzamy czy system prawidłowo rozpoznał pozycję siedzącą
-        self.assertTrue(result["is_sitting"],
-                        "System powinien zakładać pozycję siedzącą przy widoczności tylko górnej części ciała")
+        self.assertTrue(
+            result["is_sitting"],
+            "System powinien zakładać pozycję siedzącą przy widoczności tylko górnej części ciała",
+        )
         self.assertEqual(result["posture"], "sitting")
-        self.assertGreaterEqual(result["sitting_probability"], 0.7,
-                                "Prawdopodobieństwo siedzenia powinno być wysokie przy ograniczonej widoczności")
+        self.assertGreaterEqual(
+            result["sitting_probability"],
+            0.7,
+            "Prawdopodobieństwo siedzenia powinno być wysokie przy ograniczonej widoczności",
+        )
 
         # Sprawdzamy czy analiza oparta na widoczności nóg daje wysokie prawdopodobieństwo siedzenia
         leg_score = self.analyzer._analyze_leg_visibility(landmarks)
-        self.assertGreaterEqual(leg_score, 0.8,
-                                "Analiza widoczności nóg powinna dawać wysokie prawdopodobieństwo siedzenia")
+        self.assertGreaterEqual(
+            leg_score,
+            0.8,
+            "Analiza widoczności nóg powinna dawać wysokie prawdopodobieństwo siedzenia",
+        )
 
     def test_torso_only_detection(self):
         """
@@ -122,8 +130,10 @@ class TestPartialVisibility(unittest.TestCase):
             result = self.analyzer.analyze_posture(landmarks, 480, 640)
 
         # Sprawdzamy wynik detekcji
-        self.assertTrue(result["is_sitting"],
-                        "System powinien preferować pozycję siedzącą przy bardzo ograniczonej widoczności")
+        self.assertTrue(
+            result["is_sitting"],
+            "System powinien preferować pozycję siedzącą przy bardzo ograniczonej widoczności",
+        )
         self.assertEqual(result["posture"], "sitting")
         self.assertGreaterEqual(result["sitting_probability"], 0.6)
 
@@ -141,14 +151,18 @@ class TestPartialVisibility(unittest.TestCase):
         landmarks[PoseDetector.RIGHT_ANKLE] = (0, 0, 0, 0.1)
 
         score = self.analyzer._analyze_leg_visibility(landmarks)
-        self.assertGreaterEqual(score, 0.9,
-                                "Brak widoczności nóg powinien dawać najwyższe prawdopodobieństwo siedzenia")
+        self.assertGreaterEqual(
+            score, 0.9, "Brak widoczności nóg powinien dawać najwyższe prawdopodobieństwo siedzenia"
+        )
 
         # Test gdy tylko jedno kolano jest widoczne
         landmarks[PoseDetector.LEFT_KNEE] = (0, 0, 0, 0.7)  # Tylko lewe kolano widoczne
         score = self.analyzer._analyze_leg_visibility(landmarks)
-        self.assertGreaterEqual(score, 0.7,
-                                "Jedna widoczna część nóg powinna dawać wysokie prawdopodobieństwo siedzenia")
+        self.assertGreaterEqual(
+            score,
+            0.7,
+            "Jedna widoczna część nóg powinna dawać wysokie prawdopodobieństwo siedzenia",
+        )
 
         # Test gdy wszystkie części nóg są widoczne
         landmarks[PoseDetector.LEFT_KNEE] = (0, 0, 0, 0.7)
@@ -156,7 +170,9 @@ class TestPartialVisibility(unittest.TestCase):
         landmarks[PoseDetector.LEFT_ANKLE] = (0, 0, 0, 0.7)
         landmarks[PoseDetector.RIGHT_ANKLE] = (0, 0, 0, 0.7)
         score = self.analyzer._analyze_leg_visibility(landmarks)
-        self.assertLessEqual(score, 0.2, "Pełna widoczność nóg powinna dawać niskie prawdopodobieństwo siedzenia")
+        self.assertLessEqual(
+            score, 0.2, "Pełna widoczność nóg powinna dawać niskie prawdopodobieństwo siedzenia"
+        )
 
     def test_visibility_type_detection(self):
         """
@@ -170,7 +186,9 @@ class TestPartialVisibility(unittest.TestCase):
         # Test dla widoczności tylko górnej części ciała
         upper_body = self.create_upper_body_only_landmarks()
         visibility_type = self.analyzer._analyze_visibility_type(upper_body)
-        self.assertEqual(visibility_type, "upper_body", "Powinien wykryć widoczność tylko górnej części ciała")
+        self.assertEqual(
+            visibility_type, "upper_body", "Powinien wykryć widoczność tylko górnej części ciała"
+        )
 
         # Test dla częściowej widoczności
         partial_body = [(0, 0, 0, 0.1)] * 33  # Początkowo niska widoczność
@@ -180,7 +198,9 @@ class TestPartialVisibility(unittest.TestCase):
         partial_body[PoseDetector.RIGHT_SHOULDER] = (0.6, 0.2, 0, 0.8)
 
         visibility_type = self.analyzer._analyze_visibility_type(partial_body)
-        self.assertEqual(visibility_type, "partial_visibility", "Powinien wykryć częściową widoczność")
+        self.assertEqual(
+            visibility_type, "partial_visibility", "Powinien wykryć częściową widoczność"
+        )
 
     def test_analyze_partial_visibility(self):
         """
@@ -190,20 +210,29 @@ class TestPartialVisibility(unittest.TestCase):
 
         # Przy pełnej widoczności powinniśmy mieć neutralny wynik
         score = self.analyzer._analyze_partial_visibility(landmarks, "full_body")
-        self.assertAlmostEqual(score, 0.5, places=1, msg="Pełna widoczność powinna dawać neutralny wynik")
+        self.assertAlmostEqual(
+            score, 0.5, places=1, msg="Pełna widoczność powinna dawać neutralny wynik"
+        )
 
         # Przy widoczności tylko górnej części ciała powinniśmy mieć wysokie prawdopodobieństwo siedzenia
         score = self.analyzer._analyze_partial_visibility(landmarks, "upper_body")
-        self.assertGreaterEqual(score, 0.8, "Górna część ciała powinna dawać wysokie prawdopodobieństwo siedzenia")
+        self.assertGreaterEqual(
+            score, 0.8, "Górna część ciała powinna dawać wysokie prawdopodobieństwo siedzenia"
+        )
 
         # Przy częściowej widoczności również powinniśmy mieć wysokie prawdopodobieństwo
         score = self.analyzer._analyze_partial_visibility(landmarks, "partial_visibility")
-        self.assertGreaterEqual(score, 0.7, "Częściowa widoczność powinna dawać wysokie prawdopodobieństwo siedzenia")
+        self.assertGreaterEqual(
+            score, 0.7, "Częściowa widoczność powinna dawać wysokie prawdopodobieństwo siedzenia"
+        )
 
         # Przy nieznanym typie powinniśmy mieć wartość z konfiguracji
         score = self.analyzer._analyze_partial_visibility(landmarks, "unknown")
-        self.assertEqual(score, self.analyzer.partial_visibility_bias,
-                         "Nieznany typ powinien używać wartości partial_visibility_bias z konfiguracji")
+        self.assertEqual(
+            score,
+            self.analyzer.partial_visibility_bias,
+            "Nieznany typ powinien używać wartości partial_visibility_bias z konfiguracji",
+        )
 
 
 if __name__ == "__main__":

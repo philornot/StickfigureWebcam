@@ -5,7 +5,7 @@ import os
 import platform
 import subprocess
 import sys
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
 
 import cv2
 
@@ -49,7 +49,7 @@ class SystemCheck:
             "virtual_camera": {"status": False, "message": "", "details": {}},
             "mediapipe": {"status": False, "message": "", "details": {}},
             "obs": {"status": False, "message": "", "details": {}},
-            "v4l2loopback": {"status": False, "message": "", "details": {}}
+            "v4l2loopback": {"status": False, "message": "", "details": {}},
         }
 
         # Linki do instalacji komponentów
@@ -58,7 +58,7 @@ class SystemCheck:
             "v4l2loopback": "https://github.com/umlaeute/v4l2loopback",
             "pyvirtualcam": "https://pypi.org/project/pyvirtualcam/",
             "mediapipe": "https://pypi.org/project/mediapipe/",
-            "obs_virtualcam_plugin_mac": "https://github.com/johnboiles/obs-mac-virtualcam"
+            "obs_virtualcam_plugin_mac": "https://github.com/johnboiles/obs-mac-virtualcam",
         }
 
     def check_all(self) -> Dict[str, Any]:
@@ -120,7 +120,9 @@ class SystemCheck:
 
                 if not ret:
                     result["status"] = False
-                    result["message"] = f"Kamera o ID: {camera_id} jest dostępna, ale nie można odczytać klatki"
+                    result["message"] = (
+                        f"Kamera o ID: {camera_id} jest dostępna, ale nie można odczytać klatki"
+                    )
                     self._log(result["message"], level="WARNING")
                 else:
                     # Odczytanie parametrów kamery
@@ -130,11 +132,7 @@ class SystemCheck:
 
                     result["status"] = True
                     result["message"] = f"Kamera o ID: {camera_id} działa poprawnie"
-                    result["details"].update({
-                        "width": width,
-                        "height": height,
-                        "fps": fps
-                    })
+                    result["details"].update({"width": width, "height": height, "fps": fps})
                     self._log(result["message"])
 
                 # Zamknięcie kamery
@@ -172,7 +170,7 @@ class SystemCheck:
             available_backends = []
             try:
                 # Próba użycia get_available_backends (nowsze wersje pyvirtualcam)
-                if hasattr(pyvirtualcam, 'get_available_backends'):
+                if hasattr(pyvirtualcam, "get_available_backends"):
                     available_backends = pyvirtualcam.get_available_backends()
                     result["details"]["available_backends"] = available_backends
             except Exception:
@@ -187,12 +185,14 @@ class SystemCheck:
                     "width": cam.width,
                     "height": cam.height,
                     "fps": cam.fps,
-                    "device": getattr(cam, 'device', None)
+                    "device": getattr(cam, "device", None),
                 }
                 cam.close()
 
                 result["status"] = True
-                result["message"] = f"Wirtualna kamera działa poprawnie (backend: {cam_info['backend']})"
+                result["message"] = (
+                    f"Wirtualna kamera działa poprawnie (backend: {cam_info['backend']})"
+                )
                 result["details"].update(cam_info)
                 self._log(result["message"])
 
@@ -205,16 +205,22 @@ class SystemCheck:
                 # Dodajemy sugestie w zależności od systemu
                 if self.system == "Windows":
                     if "OBS" in str(e):
-                        result["details"]["suggestion"] = "Zainstaluj OBS Studio i uruchom Virtual Camera"
+                        result["details"][
+                            "suggestion"
+                        ] = "Zainstaluj OBS Studio i uruchom Virtual Camera"
                         result["details"]["install_link"] = self.install_links["obs"]
                 elif self.system == "Linux":
                     if "v4l2loopback" in str(e):
                         result["details"]["suggestion"] = "Zainstaluj i załaduj moduł v4l2loopback"
                         result["details"]["install_link"] = self.install_links["v4l2loopback"]
                 elif self.system == "Darwin":  # macOS
-                    result["details"]["suggestion"] = "Zainstaluj OBS Studio i plugin obs-mac-virtualcam"
+                    result["details"][
+                        "suggestion"
+                    ] = "Zainstaluj OBS Studio i plugin obs-mac-virtualcam"
                     result["details"]["install_link_obs"] = self.install_links["obs"]
-                    result["details"]["install_link_plugin"] = self.install_links["obs_virtualcam_plugin_mac"]
+                    result["details"]["install_link_plugin"] = self.install_links[
+                        "obs_virtualcam_plugin_mac"
+                    ]
 
         except Exception as e:
             result["status"] = False
@@ -249,7 +255,7 @@ class SystemCheck:
             pose = mp_pose.Pose(
                 static_image_mode=True,
                 model_complexity=0,  # Używamy najprostszego modelu dla testu
-                min_detection_confidence=0.5
+                min_detection_confidence=0.5,
             )
 
             # Sprawdzenie wersji MediaPipe
@@ -299,20 +305,19 @@ class SystemCheck:
 
                 obs_paths = [
                     os.path.join(program_files, "obs-studio"),
-                    os.path.join(program_files_x86, "obs-studio")
+                    os.path.join(program_files_x86, "obs-studio"),
                 ]
 
                 # Dla Steam
-                steam_path = os.path.join(program_files, "Steam", "steamapps", "common", "obs-studio")
+                steam_path = os.path.join(
+                    program_files, "Steam", "steamapps", "common", "obs-studio"
+                )
                 if os.path.exists(steam_path):
                     obs_paths.append(steam_path)
 
             elif self.system == "Darwin":  # macOS
                 # Typowe lokalizacje na macOS
-                obs_paths = [
-                    "/Applications/OBS.app",
-                    os.path.expanduser("~/Applications/OBS.app")
-                ]
+                obs_paths = ["/Applications/OBS.app", os.path.expanduser("~/Applications/OBS.app")]
 
             # Sprawdzenie, czy OBS istnieje w którejś z lokalizacji
             obs_installed = False
@@ -363,17 +368,19 @@ class SystemCheck:
         try:
             # Sprawdzenie, czy moduł jest załadowany
             module_loaded = False
-            loaded_modules = subprocess.check_output(['lsmod']).decode('utf-8')
+            loaded_modules = subprocess.check_output(["lsmod"]).decode("utf-8")
 
-            if 'v4l2loopback' in loaded_modules:
+            if "v4l2loopback" in loaded_modules:
                 module_loaded = True
 
             # Sprawdzenie, czy istnieją urządzenia wirtualnej kamery
             v4l_devices = []
 
             try:
-                devices_output = subprocess.check_output(['ls', '-la', '/dev/video*']).decode('utf-8')
-                v4l_devices = [line for line in devices_output.splitlines() if 'video' in line]
+                devices_output = subprocess.check_output(["ls", "-la", "/dev/video*"]).decode(
+                    "utf-8"
+                )
+                v4l_devices = [line for line in devices_output.splitlines() if "video" in line]
             except subprocess.CalledProcessError:
                 pass
 
@@ -409,11 +416,9 @@ class SystemCheck:
 
         for component, result in self.results.items():
             if result["status"] is False:  # Pomijamy None (nieobsługiwane) i True (OK)
-                missing.append({
-                    "name": component,
-                    "message": result["message"],
-                    "details": result["details"]
-                })
+                missing.append(
+                    {"name": component, "message": result["message"], "details": result["details"]}
+                )
 
         return missing
 
@@ -452,7 +457,7 @@ class SystemCheck:
             instructions["camera"] = [
                 "Sprawdź, czy kamera jest podłączona i działa poprawnie.",
                 "Upewnij się, że żadna inna aplikacja nie używa kamery.",
-                "Sprawdź ustawienia prywatności systemu i uprawnienia aplikacji do korzystania z kamery."
+                "Sprawdź ustawienia prywatności systemu i uprawnienia aplikacji do korzystania z kamery.",
             ]
 
         # Instrukcje dla wirtualnej kamery
@@ -461,26 +466,26 @@ class SystemCheck:
                 instructions["virtual_camera"] = [
                     f"Zainstaluj OBS Studio: {self.install_links['obs']}",
                     "Uruchom OBS Studio i włącz Virtual Camera (Narzędzia -> Start Virtual Camera)",
-                    "Jeśli już masz OBS, upewnij się, że Virtual Camera jest włączona"
+                    "Jeśli już masz OBS, upewnij się, że Virtual Camera jest włączona",
                 ]
             elif self.system == "Linux":
                 instructions["virtual_camera"] = [
                     f"Zainstaluj v4l2loopback: {self.install_links['v4l2loopback']}",
                     "Instalacja przez apt: sudo apt-get install v4l2loopback-dkms",
-                    "Załaduj moduł: sudo modprobe v4l2loopback"
+                    "Załaduj moduł: sudo modprobe v4l2loopback",
                 ]
             elif self.system == "Darwin":  # macOS
                 instructions["virtual_camera"] = [
                     f"Zainstaluj OBS Studio: {self.install_links['obs']}",
                     f"Zainstaluj plugin obs-mac-virtualcam: {self.install_links['obs_virtualcam_plugin_mac']}",
-                    "Uruchom OBS Studio i włącz Virtual Camera (Narzędzia -> Start Virtual Camera)"
+                    "Uruchom OBS Studio i włącz Virtual Camera (Narzędzia -> Start Virtual Camera)",
                 ]
 
         # Instrukcje dla MediaPipe
         if not self.results["mediapipe"]["status"]:
             instructions["mediapipe"] = [
                 f"Zainstaluj bibliotekę MediaPipe: pip install mediapipe",
-                f"Więcej informacji: {self.install_links['mediapipe']}"
+                f"Więcej informacji: {self.install_links['mediapipe']}",
             ]
 
             # Dodatkowe informacje dla Python 3.11+ gdzie MediaPipe może mieć problemy
@@ -527,7 +532,7 @@ def check_system_requirements(logger=None) -> Tuple[bool, Dict[str, Any]]:
         "all_met": all_requirements_met,
         "results": checker.results,
         "missing": checker.get_missing_components(),
-        "instructions": checker.get_installation_instructions()
+        "instructions": checker.get_installation_instructions(),
     }
 
     return all_requirements_met, results

@@ -3,4 +3,4 @@
 
 from src.config.settings import get_settings, save_settings
 
-__all__ = ['get_settings', 'save_settings']
+__all__ = ["get_settings", "save_settings"]

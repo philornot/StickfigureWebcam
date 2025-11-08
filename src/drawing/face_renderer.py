@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # src/drawing/face_renderer.py
 
-from typing import Tuple, Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -20,7 +20,7 @@ class SimpleFaceRenderer:
         self,
         feature_color: Tuple[int, int, int] = (0, 0, 0),  # Czarny
         smooth_factor: float = 0.3,
-        logger: Optional[CustomLogger] = None
+        logger: Optional[CustomLogger] = None,
     ):
         """
         Inicjalizacja renderera twarzy.
@@ -44,7 +44,7 @@ class SimpleFaceRenderer:
             "left_eye_open": 1.0,
             "right_eye_open": 1.0,
             "eyebrow_raised": 0.0,
-            "surprise": 0.0
+            "surprise": 0.0,
         }
 
         # Dodanie histerezy, aby uniknąć przełączania między uśmiechem i smutkiem
@@ -61,7 +61,9 @@ class SimpleFaceRenderer:
         self.expressions_history: List[Dict[str, float]] = []
         self.expressions_history_size = 5  # Ilość klatek do uśredniania
 
-        self.logger.info("SimpleFaceRenderer", "Zainicjalizowano renderer twarzy", log_type="DRAWING")
+        self.logger.info(
+            "SimpleFaceRenderer", "Zainicjalizowano renderer twarzy", log_type="DRAWING"
+        )
 
     def draw_face(
         self,
@@ -69,7 +71,7 @@ class SimpleFaceRenderer:
         head_center: Tuple[int, int],
         head_radius: int,
         mood: str = "neutral",
-        face_data: Optional[Dict[str, Any]] = None
+        face_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Rysuje twarz na stick figure.
@@ -120,7 +122,9 @@ class SimpleFaceRenderer:
                     mood = current_mood
 
                 # Rysujemy twarz z uwzględnieniem wyrazu mimiki
-                self._draw_face_with_expressions(canvas, head_center, head_radius, smoothed_expressions, mood)
+                self._draw_face_with_expressions(
+                    canvas, head_center, head_radius, smoothed_expressions, mood
+                )
             else:
                 # W przeciwnym razie rysujemy prostą twarz w zależności od nastroju
                 self._draw_mood_face(canvas, head_center, head_radius, mood)
@@ -130,14 +134,12 @@ class SimpleFaceRenderer:
                 self.logger.debug(
                     "SimpleFaceRenderer",
                     f"Wyrenderowano {self.frame_count} klatek twarzy, aktualny nastrój: {mood}",
-                    log_type="DRAWING"
+                    log_type="DRAWING",
                 )
 
         except Exception as e:
             self.logger.error(
-                "SimpleFaceRenderer",
-                f"Błąd podczas rysowania twarzy: {str(e)}",
-                log_type="DRAWING"
+                "SimpleFaceRenderer", f"Błąd podczas rysowania twarzy: {str(e)}", log_type="DRAWING"
             )
 
     def _average_expressions(self) -> Dict[str, float]:
@@ -151,9 +153,7 @@ class SimpleFaceRenderer:
             return self.last_expressions
 
         # Inicjalizacja słownika z kluczami wszystkich wyrażeń
-        avg_expressions = {
-            key: 0.0 for key in self.last_expressions.keys()
-        }
+        avg_expressions = {key: 0.0 for key in self.last_expressions.keys()}
 
         # Sumowanie wszystkich wartości
         for expressions in self.expressions_history:
@@ -214,8 +214,9 @@ class SimpleFaceRenderer:
         for key, value in expressions.items():
             if key in self.last_expressions:
                 # Wygładź wyrazy twarzy używając smooth_factor
-                smoothed[key] = (self.last_expressions[key] * self.smooth_factor +
-                                 value * (1 - self.smooth_factor))
+                smoothed[key] = self.last_expressions[key] * self.smooth_factor + value * (
+                    1 - self.smooth_factor
+                )
             else:
                 smoothed[key] = value
 
@@ -230,7 +231,7 @@ class SimpleFaceRenderer:
         center: Tuple[int, int],
         radius: int,
         expressions: Dict[str, float],
-        mood: str
+        mood: str,
     ) -> None:
         """
         Rysuje twarz na podstawie wartości wyrazów twarzy.
@@ -266,7 +267,7 @@ class SimpleFaceRenderer:
                 (left_eye_pos[0] - eye_size, left_eye_pos[1]),
                 (left_eye_pos[0] + eye_size, left_eye_pos[1]),
                 self.feature_color,
-                2
+                2,
             )
 
         # Prawe oko
@@ -279,7 +280,7 @@ class SimpleFaceRenderer:
                 (right_eye_pos[0] - eye_size, right_eye_pos[1]),
                 (right_eye_pos[0] + eye_size, right_eye_pos[1]),
                 self.feature_color,
-                2
+                2,
             )
 
         # Rysujemy usta
@@ -292,7 +293,7 @@ class SimpleFaceRenderer:
             self.logger.debug(
                 "SimpleFaceRenderer",
                 f"Wyrazy twarzy: smile={smile:.2f}, mouth_open={mouth_open:.2f}, mood={mood}",
-                log_type="DRAWING"
+                log_type="DRAWING",
             )
 
         if mouth_open > 0.2:
@@ -303,9 +304,10 @@ class SimpleFaceRenderer:
                 (cx, mouth_y),
                 (mouth_width, mouth_open_height),
                 0,  # kąt
-                0, 360,  # pełna elipsa
+                0,
+                360,  # pełna elipsa
                 self.feature_color,
-                2  # grubość
+                2,  # grubość
             )
         else:
             # Zamknięte usta - różne rodzaje w zależności od nastroju
@@ -316,9 +318,10 @@ class SimpleFaceRenderer:
                     (cx, mouth_y),
                     (mouth_width, mouth_height),
                     0,  # kąt
-                    0, 180,  # łuk w dół
+                    0,
+                    180,  # łuk w dół
                     self.feature_color,
-                    2  # grubość
+                    2,  # grubość
                 )
             elif mood == "sad":
                 # Smutek - łuk w górę
@@ -327,9 +330,10 @@ class SimpleFaceRenderer:
                     (cx, mouth_y + mouth_height // 2),
                     (mouth_width, mouth_height),
                     0,  # kąt
-                    180, 360,  # łuk w górę
+                    180,
+                    360,  # łuk w górę
                     self.feature_color,
-                    2  # grubość
+                    2,  # grubość
                 )
             else:  # Neutralny
                 # Neutralny - prosta linia
@@ -338,15 +342,11 @@ class SimpleFaceRenderer:
                     (cx - mouth_width // 2, mouth_y),
                     (cx + mouth_width // 2, mouth_y),
                     self.feature_color,
-                    2  # grubość
+                    2,  # grubość
                 )
 
     def _draw_mood_face(
-        self,
-        canvas: np.ndarray,
-        center: Tuple[int, int],
-        radius: int,
-        mood: str
+        self, canvas: np.ndarray, center: Tuple[int, int], radius: int, mood: str
     ) -> None:
         """
         Rysuje twarz z określonym nastrojem.
@@ -373,7 +373,7 @@ class SimpleFaceRenderer:
                 (left_eye_pos[0] - eye_size, left_eye_pos[1]),
                 (left_eye_pos[0] + eye_size, left_eye_pos[1]),
                 self.feature_color,
-                2
+                2,
             )
         else:
             cv2.circle(canvas, left_eye_pos, eye_size, self.feature_color, -1)
@@ -394,9 +394,10 @@ class SimpleFaceRenderer:
                 (cx, mouth_y),
                 (mouth_width, mouth_height),
                 0,  # kąt
-                0, 180,  # łuk w dół
+                0,
+                180,  # łuk w dół
                 self.feature_color,
-                2  # grubość
+                2,  # grubość
             )
         elif mood == "sad":
             # Smutek - odwrócony łuk
@@ -405,18 +406,15 @@ class SimpleFaceRenderer:
                 (cx, mouth_y + mouth_height // 2),
                 (mouth_width, mouth_height),
                 0,  # kąt
-                180, 360,  # łuk w górę
+                180,
+                360,  # łuk w górę
                 self.feature_color,
-                2  # grubość
+                2,  # grubość
             )
         elif mood == "surprised":
             # Zaskoczenie - otwarte usta (okrąg)
             cv2.circle(
-                canvas,
-                (cx, mouth_y),
-                int(mouth_width * 0.4),
-                self.feature_color,
-                2  # grubość
+                canvas, (cx, mouth_y), int(mouth_width * 0.4), self.feature_color, 2  # grubość
             )
         else:  # neutral
             # Neutralny - prosta linia
@@ -425,7 +423,7 @@ class SimpleFaceRenderer:
                 (cx - mouth_width // 2, mouth_y),
                 (cx + mouth_width // 2, mouth_y),
                 self.feature_color,
-                2  # grubość
+                2,  # grubość
             )
 
     def reset(self) -> None:
@@ -438,9 +436,11 @@ class SimpleFaceRenderer:
             "left_eye_open": 1.0,
             "right_eye_open": 1.0,
             "eyebrow_raised": 0.0,
-            "surprise": 0.0
+            "surprise": 0.0,
         }
         self.expressions_history = []
         self.frame_count = 0
 
-        self.logger.debug("SimpleFaceRenderer", "Zresetowano stan renderera twarzy", log_type="DRAWING")
+        self.logger.debug(
+            "SimpleFaceRenderer", "Zresetowano stan renderera twarzy", log_type="DRAWING"
+        )

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """UI manager for preview windows and debug overlays."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import cv2
 import numpy as np
@@ -13,11 +13,7 @@ from src.utils.custom_logger import CustomLogger
 class UIManager:
     """Manages preview windows and debug information display."""
 
-    def __init__(
-        self,
-        ui_config: Dict[str, Any],
-        logger: Optional[CustomLogger] = None
-    ):
+    def __init__(self, ui_config: Dict[str, Any], logger: Optional[CustomLogger] = None):
         """Initialize the UI manager.
 
         Args:
@@ -54,11 +50,7 @@ class UIManager:
             output_frame = self._add_output_overlay(processed, fps)
             cv2.imshow("Stick Figure Output", output_frame)
 
-    def _add_overlay(
-        self,
-        frame: np.ndarray,
-        frame_data: Dict[str, Any]
-    ) -> np.ndarray:
+    def _add_overlay(self, frame: np.ndarray, frame_data: Dict[str, Any]) -> np.ndarray:
         """Add debug overlay to frame.
 
         Args:
@@ -73,13 +65,7 @@ class UIManager:
 
         # FPS counter
         cv2.putText(
-            display,
-            f"FPS: {fps:.1f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.0,
-            (0, 255, 0),
-            2
+            display, f"FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2
         )
 
         # Debug info
@@ -90,15 +76,7 @@ class UIManager:
             status_text = "Face: DETECTED" if has_face else "Face: NOT DETECTED"
             color = (0, 255, 0) if has_face else (0, 0, 255)
 
-            cv2.putText(
-                display,
-                status_text,
-                (10, 70),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                color,
-                2
-            )
+            cv2.putText(display, status_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
             # Expression values
             if has_face and "expressions" in face_data:
@@ -113,7 +91,7 @@ class UIManager:
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
                     (0, 255, 0),
-                    1
+                    1,
                 )
 
                 cv2.putText(
@@ -123,16 +101,12 @@ class UIManager:
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
                     (0, 255, 0),
-                    1
+                    1,
                 )
 
         return display
 
-    def _add_output_overlay(
-        self,
-        frame: np.ndarray,
-        fps: float
-    ) -> np.ndarray:
+    def _add_output_overlay(self, frame: np.ndarray, fps: float) -> np.ndarray:
         """Add overlay to output frame.
 
         Args:
@@ -146,13 +120,7 @@ class UIManager:
 
         # FPS counter
         cv2.putText(
-            display,
-            f"FPS: {fps:.1f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (100, 100, 100),
-            1
+            display, f"FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 100, 100), 1
         )
 
         return display
@@ -173,12 +141,12 @@ class UIManager:
 
         # Map key codes to names
         key_map = {
-            27: 'ESC',
-            ord('q'): 'q',
-            ord('p'): 'p',
-            ord('d'): 'd',
-            ord('f'): 'f',
-            ord('s'): 's',
+            27: "ESC",
+            ord("q"): "q",
+            ord("p"): "p",
+            ord("d"): "d",
+            ord("f"): "f",
+            ord("s"): "s",
         }
 
         return key_map.get(key)

@@ -8,7 +8,7 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch, call
+from unittest.mock import call, patch
 
 from src.utils.custom_logger import CustomLogger
 
@@ -26,20 +26,22 @@ class TestCustomLogger(unittest.TestCase):
         self.log_file = os.path.join(self.temp_dir, "test_logs.log")
 
         # Patchujemy metodę formatowania czasu, aby była przewidywalna
-        self.time_patch = patch('datetime.datetime')
+        self.time_patch = patch("datetime.datetime")
         self.mock_datetime = self.time_patch.start()
         self.mock_datetime.now.return_value.strftime.return_value = "2025-04-30 12:00:00"
 
         # Najważniejsza poprawka - patchujemy całą metodę _log w CustomLogger,
         # zamiast próbować patchować poszczególne handlery
-        self.log_method_patch = patch('src.utils.custom_logger.CustomLogger._log')
+        self.log_method_patch = patch("src.utils.custom_logger.CustomLogger._log")
         self.mock_log_method = self.log_method_patch.start()
 
         # Inicjalizacja loggera bez pliku logów (tylko dla konsoli)
         self.console_logger = CustomLogger(log_file=None, console_level="INFO")
 
         # Inicjalizacja loggera z plikiem logów
-        self.file_logger = CustomLogger(log_file=self.log_file, console_level="INFO", file_level="DEBUG")
+        self.file_logger = CustomLogger(
+            log_file=self.log_file, console_level="INFO", file_level="DEBUG"
+        )
 
         # Resetujemy mock po inicjalizacji loggerów
         self.mock_log_method.reset_mock()
@@ -104,7 +106,7 @@ class TestCustomLogger(unittest.TestCase):
         expected_calls = [
             call("DEBUG", "TestModule", "Debug message", None),
             call("INFO", "TestModule", "Info message", None),
-            call("WARNING", "TestModule", "Warning message", None)
+            call("WARNING", "TestModule", "Warning message", None),
         ]
         self.mock_log_method.assert_has_calls(expected_calls)
 
@@ -113,25 +115,17 @@ class TestCustomLogger(unittest.TestCase):
         # Tworzymy złożoną strukturę danych
         complex_data = {
             "array": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            "nested": {
-                "deeper": {
-                    "evenDeeper": [1, 2, 3, 4, 5]
-                }
-            },
-            "manyItems": {
-                "item1": 1,
-                "item2": 2,
-                "item3": 3,
-                "item4": 4,
-                "item5": 5
-            }
+            "nested": {"deeper": {"evenDeeper": [1, 2, 3, 4, 5]}},
+            "manyItems": {"item1": 1, "item2": 2, "item3": 3, "item4": 4, "item5": 5},
         }
 
         # Przycinamy dane
         trimmed_data = self.console_logger._smart_trim(complex_data, max_depth=2)
 
         # Sprawdzamy czy tablica została przycięta
-        self.assertEqual(len(trimmed_data["array"]), 6)  # 5 elementów + komunikat o przyciętych elementach
+        self.assertEqual(
+            len(trimmed_data["array"]), 6
+        )  # 5 elementów + komunikat o przyciętych elementach
         self.assertIn("więcej elementów", trimmed_data["array"][-1])
 
         # Sprawdzamy czy najgłębsze zagnieżdżenie zostało przycięte
@@ -153,7 +147,7 @@ class TestCustomLogger(unittest.TestCase):
             "frame_number": 42,
             "landmarks": [(0.1, 0.2, 0.0, 0.9)] * 33,
             "segmentation_mask": "duża macierz",
-            "other_data": "niepotrzebne szczegóły"
+            "other_data": "niepotrzebne szczegóły",
         }
 
         # Formatujemy dane w trybie zwykłym (nie verbose)
@@ -184,13 +178,7 @@ class TestCustomLogger(unittest.TestCase):
     def test_log_json(self):
         """Test logowania danych w formacie JSON."""
         # Tworzymy dane JSON
-        json_data = {
-            "name": "Test",
-            "values": [1, 2, 3, 4, 5],
-            "nested": {
-                "key": "value"
-            }
-        }
+        json_data = {"name": "Test", "values": [1, 2, 3, 4, 5], "nested": {"key": "value"}}
 
         # Logujemy dane
         json_text = self.console_logger._log_json(json_data)
@@ -213,11 +201,19 @@ class TestCustomLogger(unittest.TestCase):
     def test_specialized_logging_methods(self):
         """Test specjalizowanych metod logowania."""
         # Test logowania statusu kamery
-        self.console_logger.camera_status(True, {"name": "Test Camera", "resolution": (640, 480), "fps": 30})
+        self.console_logger.camera_status(
+            True, {"name": "Test Camera", "resolution": (640, 480), "fps": 30}
+        )
 
         # Szukamy wywołania _log z odpowiednimi argumentami
-        info_call = next((call_args for call_args in self.mock_log_method.call_args_list
-                          if call_args[0][0] == "INFO" and "Kamera dostępna" in call_args[0][2]), None)
+        info_call = next(
+            (
+                call_args
+                for call_args in self.mock_log_method.call_args_list
+                if call_args[0][0] == "INFO" and "Kamera dostępna" in call_args[0][2]
+            ),
+            None,
+        )
 
         self.assertIsNotNone(info_call, "Nie znaleziono wywołania info z 'Kamera dostępna'")
         self.assertEqual(info_call[0][1], "CameraStatus")
@@ -229,11 +225,19 @@ class TestCustomLogger(unittest.TestCase):
         self.mock_log_method.reset_mock()
 
         # Test logowania detekcji pozy
-        self.console_logger.pose_detection(True, {"sitting": True, "landmarks_count": 33, "confidence": 0.9})
+        self.console_logger.pose_detection(
+            True, {"sitting": True, "landmarks_count": 33, "confidence": 0.9}
+        )
 
         # Szukamy wywołania _log z odpowiednimi argumentami
-        info_call = next((call_args for call_args in self.mock_log_method.call_args_list
-                          if call_args[0][0] == "INFO" and "Wykryto pozę" in call_args[0][2]), None)
+        info_call = next(
+            (
+                call_args
+                for call_args in self.mock_log_method.call_args_list
+                if call_args[0][0] == "INFO" and "Wykryto pozę" in call_args[0][2]
+            ),
+            None,
+        )
 
         self.assertIsNotNone(info_call, "Nie znaleziono wywołania info z 'Wykryto pozę'")
         self.assertEqual(info_call[0][1], "PoseDetection")

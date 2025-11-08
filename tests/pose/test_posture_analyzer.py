@@ -27,7 +27,7 @@ class TestPostureAnalyzer(unittest.TestCase):
             smoothing_factor=0.7,
             temporal_smoothing=3,
             partial_visibility_bias=0.8,
-            logger=self.mock_logger
+            logger=self.mock_logger,
         )
 
     def test_analyze_posture_no_landmarks(self):
@@ -172,7 +172,7 @@ class TestPostureAnalyzer(unittest.TestCase):
             standing_hip_threshold=new_hip_threshold,
             confidence_threshold=new_confidence_threshold,
             smoothing_factor=new_smoothing_factor,
-            partial_visibility_bias=new_bias
+            partial_visibility_bias=new_bias,
         )
 
         # Sprawdzamy czy wartości zostały zaktualizowane

@@ -7,4 +7,4 @@ Moduł odpowiedzialny za adaptacyjne dostosowanie kolorów do warunków oświetl
 
 from src.lighting.adaptive_colors import AdaptiveLightingManager
 
-__all__ = ['AdaptiveLightingManager']
+__all__ = ["AdaptiveLightingManager"]

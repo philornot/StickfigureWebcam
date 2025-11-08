@@ -4,4 +4,4 @@
 from src.camera.camera_capture import CameraCapture
 from src.camera.simple_virtual_camera import SimpleVirtualCamera
 
-__all__ = ['CameraCapture', 'SimpleVirtualCamera']
+__all__ = ["CameraCapture", "SimpleVirtualCamera"]

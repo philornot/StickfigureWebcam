@@ -4,12 +4,13 @@
 
 import math
 import time
-from typing import Tuple, Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from src.utils.custom_logger import CustomLogger
+
 from .face_renderer import SimpleFaceRenderer
 from .pose_analyzer import PoseAnalyzer
 
@@ -44,7 +45,7 @@ class StickFigureRenderer:
         # Kolor krzesła (niewykorzystywany, ale pozostawiony dla kompatybilności)
         smooth_factor: float = 0.3,  # Współczynnik wygładzania ruchu
         smoothing_history: int = 3,  # Liczba klatek historii do wygładzania
-        logger: Optional[CustomLogger] = None
+        logger: Optional[CustomLogger] = None,
     ):
         """
         Inicjalizacja renderera stick figure.
@@ -80,9 +81,7 @@ class StickFigureRenderer:
 
         # Inicjalizacja renderera twarzy
         self.face_renderer = SimpleFaceRenderer(
-            feature_color=figure_color,
-            smooth_factor=smooth_factor,
-            logger=self.logger
+            feature_color=figure_color, smooth_factor=smooth_factor, logger=self.logger
         )
 
         # Inicjalizacja analizatora pozy do analizy górnej części ciała
@@ -127,7 +126,7 @@ class StickFigureRenderer:
             "StickFigureRenderer",
             f"Zainicjalizowano renderer stick figure ({canvas_width}x{canvas_height}) "
             f"z większym popierściem (head_radius={self.head_radius})",
-            log_type="DRAWING"
+            log_type="DRAWING",
         )
 
     def render(self, face_data: Optional[Dict[str, Any]] = None) -> np.ndarray:
@@ -158,11 +157,7 @@ class StickFigureRenderer:
 
             # Rysowanie twarzy
             self.face_renderer.draw_face(
-                canvas,
-                self.head_center,
-                self.head_radius,
-                self.mood,
-                face_data
+                canvas, self.head_center, self.head_radius, self.mood, face_data
             )
 
             # Logowanie co 300 klatek
@@ -171,7 +166,7 @@ class StickFigureRenderer:
                     "StickFigureRenderer",
                     f"Wyrenderowano {self.frame_count} klatek. Widoczność ramion: "
                     f"L={self.left_arm_visible}, P={self.right_arm_visible}",
-                    log_type="DRAWING"
+                    log_type="DRAWING",
                 )
 
             return canvas
@@ -181,7 +176,7 @@ class StickFigureRenderer:
                 "StickFigureRenderer",
                 f"Błąd podczas renderowania stick figure: {str(e)}",
                 log_type="DRAWING",
-                error={"error": str(e)}
+                error={"error": str(e)},
             )
             # W przypadku błędu zwracamy pusty biały obraz
             return np.ones((self.canvas_height, self.canvas_width, 3), dtype=np.uint8) * 255
@@ -228,7 +223,9 @@ class StickFigureRenderer:
 
             # Parametry animacji idle dla rąk
             animation_time = current_time - self.animation_start_time
-            idle_animation_factor = math.sin(animation_time * self.arms_animation_speed) * 0.5 + 0.5  # Wartość 0-1
+            idle_animation_factor = (
+                math.sin(animation_time * self.arms_animation_speed) * 0.5 + 0.5
+            )  # Wartość 0-1
 
             # Neutralne pozycje łokci (gdy nie ma detekcji)
             neutral_elbow_offset_y = int(self.head_radius * 0.8)
@@ -263,9 +260,13 @@ class StickFigureRenderer:
                     else:
                         # Wygładzanie ruchu
                         new_x = int(
-                            self.last_left_shoulder[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
+                            self.last_left_shoulder[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
                         new_y = int(
-                            self.last_left_shoulder[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                            self.last_left_shoulder[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_left_shoulder = (new_x, new_y)
 
                 if shoulders and shoulders[1]:  # Prawy bark
@@ -278,9 +279,13 @@ class StickFigureRenderer:
                     else:
                         # Wygładzanie ruchu
                         new_x = int(
-                            self.last_right_shoulder[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
+                            self.last_right_shoulder[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
                         new_y = int(
-                            self.last_right_shoulder[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                            self.last_right_shoulder[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_right_shoulder = (new_x, new_y)
 
             # Jeśli nie wykryto lewego barku, używamy domyślnej pozycji
@@ -289,10 +294,14 @@ class StickFigureRenderer:
                     self.last_left_shoulder = default_left_shoulder
                 else:
                     # Płynne przejście do domyślnej pozycji
-                    new_x = int(self.last_left_shoulder[0] * self.smooth_factor + default_left_shoulder[0] * (
-                        1 - self.smooth_factor))
-                    new_y = int(self.last_left_shoulder[1] * self.smooth_factor + default_left_shoulder[1] * (
-                        1 - self.smooth_factor))
+                    new_x = int(
+                        self.last_left_shoulder[0] * self.smooth_factor
+                        + default_left_shoulder[0] * (1 - self.smooth_factor)
+                    )
+                    new_y = int(
+                        self.last_left_shoulder[1] * self.smooth_factor
+                        + default_left_shoulder[1] * (1 - self.smooth_factor)
+                    )
                     self.last_left_shoulder = (new_x, new_y)
 
             # Jeśli nie wykryto prawego barku, używamy domyślnej pozycji
@@ -301,10 +310,14 @@ class StickFigureRenderer:
                     self.last_right_shoulder = default_right_shoulder
                 else:
                     # Płynne przejście do domyślnej pozycji
-                    new_x = int(self.last_right_shoulder[0] * self.smooth_factor + default_right_shoulder[0] * (
-                        1 - self.smooth_factor))
-                    new_y = int(self.last_right_shoulder[1] * self.smooth_factor + default_right_shoulder[1] * (
-                        1 - self.smooth_factor))
+                    new_x = int(
+                        self.last_right_shoulder[0] * self.smooth_factor
+                        + default_right_shoulder[0] * (1 - self.smooth_factor)
+                    )
+                    new_y = int(
+                        self.last_right_shoulder[1] * self.smooth_factor
+                        + default_right_shoulder[1] * (1 - self.smooth_factor)
+                    )
                     self.last_right_shoulder = (new_x, new_y)
 
             # ===== AKTUALIZACJA POZYCJI ŁOKCI =====
@@ -312,7 +325,11 @@ class StickFigureRenderer:
             right_elbow_detected = False
 
             # Najpierw sprawdzamy dane z analizy górnej części ciała
-            if upper_body_data and upper_body_data["has_arms"] and upper_body_data["elbow_positions"]:
+            if (
+                upper_body_data
+                and upper_body_data["has_arms"]
+                and upper_body_data["elbow_positions"]
+            ):
                 elbows = upper_body_data["elbow_positions"]
 
                 # Lewy łokieć
@@ -327,7 +344,7 @@ class StickFigureRenderer:
                         self.logger.debug(
                             "StickFigureRenderer",
                             "Wykryto lewe ramię - rozpoczęcie śledzenia",
-                            log_type="DRAWING"
+                            log_type="DRAWING",
                         )
 
                     # Płynne przejście do wykrytej pozycji
@@ -335,8 +352,14 @@ class StickFigureRenderer:
                         self.last_left_elbow = (canvas_x, canvas_y)
                     else:
                         # Wygładzanie ruchu
-                        new_x = int(self.last_left_elbow[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_left_elbow[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_left_elbow[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_left_elbow[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_left_elbow = (new_x, new_y)
 
                 # Prawy łokieć
@@ -351,7 +374,7 @@ class StickFigureRenderer:
                         self.logger.debug(
                             "StickFigureRenderer",
                             "Wykryto prawe ramię - rozpoczęcie śledzenia",
-                            log_type="DRAWING"
+                            log_type="DRAWING",
                         )
 
                     # Płynne przejście do wykrytej pozycji
@@ -359,37 +382,77 @@ class StickFigureRenderer:
                         self.last_right_elbow = (canvas_x, canvas_y)
                     else:
                         # Wygładzanie ruchu
-                        new_x = int(self.last_right_elbow[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_right_elbow[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_right_elbow[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_right_elbow[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_right_elbow = (new_x, new_y)
 
             # Alternatywnie, sprawdzamy dane hands_data (kompatybilność wsteczna)
-            elif hands_data and not left_elbow_detected and "left_hand" in hands_data and hands_data["left_hand"]:
+            elif (
+                hands_data
+                and not left_elbow_detected
+                and "left_hand" in hands_data
+                and hands_data["left_hand"]
+            ):
                 if "elbow" in hands_data["left_hand"] and hands_data["left_hand"]["elbow"]:
                     left_elbow_detected = True
                     elbow_data = hands_data["left_hand"]["elbow"]
-                    canvas_x = int(elbow_data[0] * self.canvas_width if elbow_data[0] <= 1.0 else elbow_data[0])
-                    canvas_y = int(elbow_data[1] * self.canvas_height if elbow_data[1] <= 1.0 else elbow_data[1])
+                    canvas_x = int(
+                        elbow_data[0] * self.canvas_width if elbow_data[0] <= 1.0 else elbow_data[0]
+                    )
+                    canvas_y = int(
+                        elbow_data[1] * self.canvas_height
+                        if elbow_data[1] <= 1.0
+                        else elbow_data[1]
+                    )
 
                     if self.last_left_elbow is None:
                         self.last_left_elbow = (canvas_x, canvas_y)
                     else:
-                        new_x = int(self.last_left_elbow[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_left_elbow[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_left_elbow[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_left_elbow[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_left_elbow = (new_x, new_y)
 
-            if hands_data and not right_elbow_detected and "right_hand" in hands_data and hands_data["right_hand"]:
+            if (
+                hands_data
+                and not right_elbow_detected
+                and "right_hand" in hands_data
+                and hands_data["right_hand"]
+            ):
                 if "elbow" in hands_data["right_hand"] and hands_data["right_hand"]["elbow"]:
                     right_elbow_detected = True
                     elbow_data = hands_data["right_hand"]["elbow"]
-                    canvas_x = int(elbow_data[0] * self.canvas_width if elbow_data[0] <= 1.0 else elbow_data[0])
-                    canvas_y = int(elbow_data[1] * self.canvas_height if elbow_data[1] <= 1.0 else elbow_data[1])
+                    canvas_x = int(
+                        elbow_data[0] * self.canvas_width if elbow_data[0] <= 1.0 else elbow_data[0]
+                    )
+                    canvas_y = int(
+                        elbow_data[1] * self.canvas_height
+                        if elbow_data[1] <= 1.0
+                        else elbow_data[1]
+                    )
 
                     if self.last_right_elbow is None:
                         self.last_right_elbow = (canvas_x, canvas_y)
                     else:
-                        new_x = int(self.last_right_elbow[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_right_elbow[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_right_elbow[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_right_elbow[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_right_elbow = (new_x, new_y)
 
             # Jeśli nie wykryto lewego łokcia
@@ -401,7 +464,7 @@ class StickFigureRenderer:
                     self.logger.debug(
                         "StickFigureRenderer",
                         "Utracono śledzenie lewego ramienia - powrót do animacji domyślnej",
-                        log_type="DRAWING"
+                        log_type="DRAWING",
                     )
 
                 # Czas od utraty widoczności
@@ -411,15 +474,21 @@ class StickFigureRenderer:
                 # Neutralna pozycja lewego łokcia z animacją
                 left_shoulder_pos = self.last_left_shoulder or default_left_shoulder
                 neutral_left_elbow_x = left_shoulder_pos[0] - neutral_elbow_offset_x
-                neutral_left_elbow_y = left_shoulder_pos[1] + neutral_elbow_offset_y + int(idle_animation_amount)
+                neutral_left_elbow_y = (
+                    left_shoulder_pos[1] + neutral_elbow_offset_y + int(idle_animation_amount)
+                )
 
                 # Jeśli mamy zapisane ostatnie pozycje, płynnie przechodzimy do pozycji neutralnej
                 if self.last_left_elbow is not None:
                     # Interpolacja liniowa między ostatnią wykrytą pozycją a pozycją neutralną
                     new_x = int(
-                        self.last_left_elbow[0] * (1 - transition_factor) + neutral_left_elbow_x * transition_factor)
+                        self.last_left_elbow[0] * (1 - transition_factor)
+                        + neutral_left_elbow_x * transition_factor
+                    )
                     new_y = int(
-                        self.last_left_elbow[1] * (1 - transition_factor) + neutral_left_elbow_y * transition_factor)
+                        self.last_left_elbow[1] * (1 - transition_factor)
+                        + neutral_left_elbow_y * transition_factor
+                    )
                     self.last_left_elbow = (new_x, new_y)
                 else:
                     # Jeśli nie mamy historii, używamy bezpośrednio pozycji neutralnej
@@ -434,7 +503,7 @@ class StickFigureRenderer:
                     self.logger.debug(
                         "StickFigureRenderer",
                         "Utracono śledzenie prawego ramienia - powrót do animacji domyślnej",
-                        log_type="DRAWING"
+                        log_type="DRAWING",
                     )
 
                 # Czas od utraty widoczności
@@ -444,15 +513,21 @@ class StickFigureRenderer:
                 # Neutralna pozycja prawego łokcia z animacją
                 right_shoulder_pos = self.last_right_shoulder or default_right_shoulder
                 neutral_right_elbow_x = right_shoulder_pos[0] + neutral_elbow_offset_x
-                neutral_right_elbow_y = right_shoulder_pos[1] + neutral_elbow_offset_y + int(idle_animation_amount)
+                neutral_right_elbow_y = (
+                    right_shoulder_pos[1] + neutral_elbow_offset_y + int(idle_animation_amount)
+                )
 
                 # Jeśli mamy zapisane ostatnie pozycje, płynnie przechodzimy do pozycji neutralnej
                 if self.last_right_elbow is not None:
                     # Interpolacja liniowa między ostatnią wykrytą pozycją a pozycją neutralną
                     new_x = int(
-                        self.last_right_elbow[0] * (1 - transition_factor) + neutral_right_elbow_x * transition_factor)
+                        self.last_right_elbow[0] * (1 - transition_factor)
+                        + neutral_right_elbow_x * transition_factor
+                    )
                     new_y = int(
-                        self.last_right_elbow[1] * (1 - transition_factor) + neutral_right_elbow_y * transition_factor)
+                        self.last_right_elbow[1] * (1 - transition_factor)
+                        + neutral_right_elbow_y * transition_factor
+                    )
                     self.last_right_elbow = (new_x, new_y)
                 else:
                     # Jeśli nie mamy historii, używamy bezpośrednio pozycji neutralnej
@@ -477,8 +552,14 @@ class StickFigureRenderer:
                         self.last_left_wrist = (canvas_x, canvas_y)
                     else:
                         # Wygładzanie ruchu
-                        new_x = int(self.last_left_wrist[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_left_wrist[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_left_wrist[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_left_wrist[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_left_wrist = (new_x, new_y)
 
                 # Prawy nadgarstek
@@ -491,37 +572,77 @@ class StickFigureRenderer:
                         self.last_right_wrist = (canvas_x, canvas_y)
                     else:
                         # Wygładzanie ruchu
-                        new_x = int(self.last_right_wrist[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_right_wrist[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_right_wrist[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_right_wrist[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_right_wrist = (new_x, new_y)
 
             # Alternatywnie, sprawdzamy dane hands_data (kompatybilność wsteczna)
-            elif hands_data and not left_wrist_detected and "left_hand" in hands_data and hands_data["left_hand"]:
+            elif (
+                hands_data
+                and not left_wrist_detected
+                and "left_hand" in hands_data
+                and hands_data["left_hand"]
+            ):
                 if "wrist" in hands_data["left_hand"] and hands_data["left_hand"]["wrist"]:
                     left_wrist_detected = True
                     wrist_data = hands_data["left_hand"]["wrist"]
-                    canvas_x = int(wrist_data[0] * self.canvas_width if wrist_data[0] <= 1.0 else wrist_data[0])
-                    canvas_y = int(wrist_data[1] * self.canvas_height if wrist_data[1] <= 1.0 else wrist_data[1])
+                    canvas_x = int(
+                        wrist_data[0] * self.canvas_width if wrist_data[0] <= 1.0 else wrist_data[0]
+                    )
+                    canvas_y = int(
+                        wrist_data[1] * self.canvas_height
+                        if wrist_data[1] <= 1.0
+                        else wrist_data[1]
+                    )
 
                     if self.last_left_wrist is None:
                         self.last_left_wrist = (canvas_x, canvas_y)
                     else:
-                        new_x = int(self.last_left_wrist[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_left_wrist[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_left_wrist[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_left_wrist[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_left_wrist = (new_x, new_y)
 
-            if hands_data and not right_wrist_detected and "right_hand" in hands_data and hands_data["right_hand"]:
+            if (
+                hands_data
+                and not right_wrist_detected
+                and "right_hand" in hands_data
+                and hands_data["right_hand"]
+            ):
                 if "wrist" in hands_data["right_hand"] and hands_data["right_hand"]["wrist"]:
                     right_wrist_detected = True
                     wrist_data = hands_data["right_hand"]["wrist"]
-                    canvas_x = int(wrist_data[0] * self.canvas_width if wrist_data[0] <= 1.0 else wrist_data[0])
-                    canvas_y = int(wrist_data[1] * self.canvas_height if wrist_data[1] <= 1.0 else wrist_data[1])
+                    canvas_x = int(
+                        wrist_data[0] * self.canvas_width if wrist_data[0] <= 1.0 else wrist_data[0]
+                    )
+                    canvas_y = int(
+                        wrist_data[1] * self.canvas_height
+                        if wrist_data[1] <= 1.0
+                        else wrist_data[1]
+                    )
 
                     if self.last_right_wrist is None:
                         self.last_right_wrist = (canvas_x, canvas_y)
                     else:
-                        new_x = int(self.last_right_wrist[0] * self.smooth_factor + canvas_x * (1 - self.smooth_factor))
-                        new_y = int(self.last_right_wrist[1] * self.smooth_factor + canvas_y * (1 - self.smooth_factor))
+                        new_x = int(
+                            self.last_right_wrist[0] * self.smooth_factor
+                            + canvas_x * (1 - self.smooth_factor)
+                        )
+                        new_y = int(
+                            self.last_right_wrist[1] * self.smooth_factor
+                            + canvas_y * (1 - self.smooth_factor)
+                        )
                         self.last_right_wrist = (new_x, new_y)
 
             # Jeśli nie wykryto lewego nadgarstka, obliczamy jego pozycję na podstawie łokcia
@@ -540,8 +661,14 @@ class StickFigureRenderer:
                 if self.last_left_wrist is None:
                     self.last_left_wrist = (left_wrist_x, left_wrist_y)
                 else:
-                    new_x = int(self.last_left_wrist[0] * self.smooth_factor + left_wrist_x * (1 - self.smooth_factor))
-                    new_y = int(self.last_left_wrist[1] * self.smooth_factor + left_wrist_y * (1 - self.smooth_factor))
+                    new_x = int(
+                        self.last_left_wrist[0] * self.smooth_factor
+                        + left_wrist_x * (1 - self.smooth_factor)
+                    )
+                    new_y = int(
+                        self.last_left_wrist[1] * self.smooth_factor
+                        + left_wrist_y * (1 - self.smooth_factor)
+                    )
                     self.last_left_wrist = (new_x, new_y)
 
             # Jeśli nie wykryto prawego nadgarstka, obliczamy jego pozycję na podstawie łokcia
@@ -561,9 +688,13 @@ class StickFigureRenderer:
                     self.last_right_wrist = (right_wrist_x, right_wrist_y)
                 else:
                     new_x = int(
-                        self.last_right_wrist[0] * self.smooth_factor + right_wrist_x * (1 - self.smooth_factor))
+                        self.last_right_wrist[0] * self.smooth_factor
+                        + right_wrist_x * (1 - self.smooth_factor)
+                    )
                     new_y = int(
-                        self.last_right_wrist[1] * self.smooth_factor + right_wrist_y * (1 - self.smooth_factor))
+                        self.last_right_wrist[1] * self.smooth_factor
+                        + right_wrist_y * (1 - self.smooth_factor)
+                    )
                     self.last_right_wrist = (new_x, new_y)
 
         except Exception as e:
@@ -571,7 +702,7 @@ class StickFigureRenderer:
                 "StickFigureRenderer",
                 f"Błąd podczas aktualizacji pozycji rąk: {str(e)}",
                 log_type="DRAWING",
-                error={"error": str(e)}
+                error={"error": str(e)},
             )
 
     def _draw_upper_body(self, canvas: np.ndarray) -> None:
@@ -587,11 +718,7 @@ class StickFigureRenderer:
         try:
             # 1. Głowa - okrąg
             cv2.circle(
-                canvas,
-                self.head_center,
-                self.head_radius,
-                self.figure_color,
-                self.line_thickness
+                canvas, self.head_center, self.head_radius, self.figure_color, self.line_thickness
             )
 
             # 2. Obliczenie pozycji torsu i ramion względem głowy
@@ -609,7 +736,7 @@ class StickFigureRenderer:
                 (head_x, torso_top_y),
                 (head_x, torso_bottom_y),
                 self.figure_color,
-                self.line_thickness
+                self.line_thickness,
             )
 
             # 4. Rysowanie linii barków, jeśli mamy wykryte pozycje barków
@@ -619,7 +746,7 @@ class StickFigureRenderer:
                     self.last_left_shoulder,
                     self.last_right_shoulder,
                     self.figure_color,
-                    self.line_thickness
+                    self.line_thickness,
                 )
             else:
                 # Domyślne rysowanie linii barków, jeśli nie mamy wykrytych pozycji
@@ -633,7 +760,7 @@ class StickFigureRenderer:
                     (left_shoulder_x, shoulder_y),
                     (right_shoulder_x, shoulder_y),
                     self.figure_color,
-                    self.line_thickness
+                    self.line_thickness,
                 )
 
                 # Aktualizacja domyślnych pozycji barków
@@ -648,7 +775,7 @@ class StickFigureRenderer:
                     self.last_left_shoulder,
                     self.last_left_elbow,
                     self.figure_color,
-                    self.line_thickness
+                    self.line_thickness,
                 )
 
                 # Lewe przedramię - od łokcia do nadgarstka
@@ -658,7 +785,7 @@ class StickFigureRenderer:
                         self.last_left_elbow,
                         self.last_left_wrist,
                         self.figure_color,
-                        self.line_thickness
+                        self.line_thickness,
                     )
 
             # Prawe ramię - od barku do łokcia
@@ -668,7 +795,7 @@ class StickFigureRenderer:
                     self.last_right_shoulder,
                     self.last_right_elbow,
                     self.figure_color,
-                    self.line_thickness
+                    self.line_thickness,
                 )
 
                 # Prawe przedramię - od łokcia do nadgarstka
@@ -678,7 +805,7 @@ class StickFigureRenderer:
                         self.last_right_elbow,
                         self.last_right_wrist,
                         self.figure_color,
-                        self.line_thickness
+                        self.line_thickness,
                     )
 
         except Exception as e:
@@ -686,13 +813,13 @@ class StickFigureRenderer:
                 "StickFigureRenderer",
                 f"Błąd podczas rysowania popiersia: {str(e)}",
                 log_type="DRAWING",
-                error={"error": str(e)}
+                error={"error": str(e)},
             )
 
     def set_colors(
         self,
         bg_color: Optional[Tuple[int, int, int]] = None,
-        figure_color: Optional[Tuple[int, int, int]] = None
+        figure_color: Optional[Tuple[int, int, int]] = None,
     ) -> None:
         """
         Aktualizuje kolory używane do rysowania.
@@ -704,9 +831,7 @@ class StickFigureRenderer:
         if bg_color is not None:
             self.bg_color = bg_color
             self.logger.debug(
-                "StickFigureRenderer",
-                f"Zmieniono kolor tła na {bg_color}",
-                log_type="DRAWING"
+                "StickFigureRenderer", f"Zmieniono kolor tła na {bg_color}", log_type="DRAWING"
             )
 
         if figure_color is not None:
@@ -716,7 +841,7 @@ class StickFigureRenderer:
             self.logger.debug(
                 "StickFigureRenderer",
                 f"Zmieniono kolor figury na {figure_color}",
-                log_type="DRAWING"
+                log_type="DRAWING",
             )
 
     def set_mood(self, mood: str) -> None:
@@ -730,15 +855,13 @@ class StickFigureRenderer:
         if mood in valid_moods:
             self.mood = mood
             self.logger.info(
-                "StickFigureRenderer",
-                f"Zmieniono nastrój na: {mood}",
-                log_type="DRAWING"
+                "StickFigureRenderer", f"Zmieniono nastrój na: {mood}", log_type="DRAWING"
             )
         else:
             self.logger.warning(
                 "StickFigureRenderer",
                 f"Nieprawidłowy nastrój: {mood}. Dozwolone wartości: {valid_moods}",
-                log_type="DRAWING"
+                log_type="DRAWING",
             )
 
     def set_line_thickness(self, thickness: int) -> None:
@@ -752,7 +875,7 @@ class StickFigureRenderer:
         self.logger.debug(
             "StickFigureRenderer",
             f"Zmieniono grubość linii na {self.line_thickness}",
-            log_type="DRAWING"
+            log_type="DRAWING",
         )
 
     def set_smoothing(self, smooth_factor: float, history_length: int) -> None:
@@ -769,7 +892,7 @@ class StickFigureRenderer:
             "StickFigureRenderer",
             f"Zaktualizowano parametry wygładzania: faktor={self.smooth_factor}, "
             f"długość historii={self.smoothing_history}",
-            log_type="DRAWING"
+            log_type="DRAWING",
         )
 
     def resize(self, width: int, height: int) -> None:
@@ -801,7 +924,7 @@ class StickFigureRenderer:
         self.logger.info(
             "StickFigureRenderer",
             f"Zmieniono rozmiar płótna na {width}x{height}",
-            log_type="DRAWING"
+            log_type="DRAWING",
         )
 
     def reset(self) -> None:
@@ -821,8 +944,4 @@ class StickFigureRenderer:
         self.animation_start_time = time.time()
         self.face_renderer.reset()
 
-        self.logger.info(
-            "StickFigureRenderer",
-            "Zresetowano stan renderera",
-            log_type="DRAWING"
-        )
+        self.logger.info("StickFigureRenderer", "Zresetowano stan renderera", log_type="DRAWING")

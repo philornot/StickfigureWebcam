@@ -4,7 +4,7 @@
 
 import datetime
 import os
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 def get_log_file_path() -> str:
@@ -47,7 +47,7 @@ def get_logger_config(debug: bool = False) -> Dict[str, Any]:
         "log_file": log_file,
         "console_level": "DEBUG" if debug else "INFO",
         "file_level": "DEBUG",
-        "timezone": "Europe/Warsaw"
+        "timezone": "Europe/Warsaw",
     }
 
 
@@ -69,7 +69,7 @@ def setup_logger(custom_logger_class, debug: bool = False) -> Optional[Any]:
         logger.info(
             "LoggingConfig",
             f"Logger zainicjalizowany. Logi zapisywane do: {logger_config['log_file']}",
-            log_type="CONFIG"
+            log_type="CONFIG",
         )
 
         return logger
@@ -81,7 +81,7 @@ def setup_logger(custom_logger_class, debug: bool = False) -> Optional[Any]:
             fallback_logger.error(
                 "LoggingConfig",
                 f"Błąd podczas inicjalizacji loggera: {str(e)}. Używam awaryjnego loggera bez zapisu do pliku.",
-                log_type="CONFIG"
+                log_type="CONFIG",
             )
             return fallback_logger
         except:

@@ -9,7 +9,7 @@ import re
 from typing import Optional
 
 import pytz
-from colorama import init, Fore, Back, Style
+from colorama import Back, Fore, Style, init
 
 # Initialize colorama
 init(autoreset=True)
@@ -31,7 +31,7 @@ class CustomLogger:
         "INFO": {"color": Fore.GREEN, "symbol": "ℹ️", "level": logging.INFO},
         "WARNING": {"color": Fore.YELLOW, "symbol": "⚠️", "level": logging.WARNING},
         "ERROR": {"color": Fore.RED, "symbol": "❌", "level": logging.ERROR},
-        "CRITICAL": {"color": Fore.RED + Back.WHITE, "symbol": "🔥", "level": logging.CRITICAL}
+        "CRITICAL": {"color": Fore.RED + Back.WHITE, "symbol": "🔥", "level": logging.CRITICAL},
     }
 
     # Log type colors
@@ -41,7 +41,7 @@ class CustomLogger:
         "DRAWING": {"color": Fore.YELLOW, "symbol": "🖌️"},
         "VIRTUAL_CAM": {"color": Fore.LIGHTBLUE_EX, "symbol": "📺"},
         "CONFIG": {"color": Fore.GREEN, "symbol": "⚙️"},
-        "PERFORMANCE": {"color": Fore.CYAN, "symbol": "⏱️"}
+        "PERFORMANCE": {"color": Fore.CYAN, "symbol": "⏱️"},
     }
 
     class ColoredFormatter(logging.Formatter):
@@ -54,18 +54,18 @@ class CustomLogger:
         """Formatter for plain file output without colors."""
 
         def format(self, record):
-            if hasattr(record, 'plain_msg'):
+            if hasattr(record, "plain_msg"):
                 return record.plain_msg
             # Remove ANSI escape codes
-            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-            return ansi_escape.sub('', record.msg)
+            ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+            return ansi_escape.sub("", record.msg)
 
     def __init__(
         self,
         log_file: Optional[str] = None,
         console_level: str = "INFO",
         file_level: str = "DEBUG",
-        timezone: str = "Europe/Warsaw"
+        timezone: str = "Europe/Warsaw",
     ):
         """Initialize the logger.
 
@@ -107,7 +107,7 @@ class CustomLogger:
         module: str,
         message: str,
         log_type: Optional[str] = None,
-        plain: bool = False
+        plain: bool = False,
     ) -> str:
         """Format log message.
 
@@ -145,13 +145,7 @@ class CustomLogger:
 
         return formatted
 
-    def _log(
-        self,
-        level: str,
-        module: str,
-        message: str,
-        log_type: Optional[str] = None
-    ):
+    def _log(self, level: str, module: str, message: str, log_type: Optional[str] = None):
         """Internal logging method.
 
         Args:
@@ -172,7 +166,7 @@ class CustomLogger:
             lineno=0,
             msg=formatted,
             args=(),
-            exc_info=None
+            exc_info=None,
         )
         log_record.plain_msg = plain_formatted
 

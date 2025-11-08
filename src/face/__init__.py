@@ -7,4 +7,4 @@ Moduł do wykrywania i analizy twarzy użytkownika przy pomocy MediaPipe FaceMes
 
 from src.face.face_mesh_detector import FaceMeshDetector
 
-__all__ = ['FaceMeshDetector']
+__all__ = ["FaceMeshDetector"]

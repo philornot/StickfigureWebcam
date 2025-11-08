@@ -178,11 +178,7 @@ class PerformanceMonitor:
             return 0.0, 0.0, 0.0
 
         times = self.segment_times[segment_name]
-        return (
-            sum(times) / len(times),  # średnia
-            min(times),  # minimum
-            max(times)  # maksimum
-        )
+        return (sum(times) / len(times), min(times), max(times))  # średnia  # minimum  # maksimum
 
     def reset(self) -> None:
         """
@@ -214,7 +210,7 @@ class PerformanceMonitor:
             "last_execution_time_ms": self.get_last_execution_time() * 1000,
             "avg_fps": avg_fps,
             "current_fps": self.get_current_fps(),
-            "samples_count": len(self.execution_times)
+            "samples_count": len(self.execution_times),
         }
 
         # Dodaj statystyki segmentów jeśli istnieją
@@ -227,7 +223,7 @@ class PerformanceMonitor:
                 "min": min_time,
                 "min_ms": min_time * 1000,
                 "max": max_time,
-                "max_ms": max_time * 1000
+                "max_ms": max_time * 1000,
             }
 
         if segments:

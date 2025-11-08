@@ -30,10 +30,10 @@ Thank you for your interest in contributing to Stick Figure Webcam! This documen
 2. **Create and activate virtual environment:**
    ```bash
    python -m venv venv
-   
+
    # Windows
    venv\Scripts\activate
-   
+
    # Linux/macOS
    source venv/bin/activate
    ```
@@ -81,11 +81,11 @@ def process_frame(
     landmarks: List[Tuple[float, float, float, float]]
 ) -> Dict[str, Any]:
     """Process a video frame with detected landmarks.
-    
+
     Args:
         frame: Input frame as NumPy array
         landmarks: List of detected pose landmarks
-        
+
     Returns:
         Dictionary containing processing results
     """
@@ -103,24 +103,24 @@ def analyze_posture(
     frame_width: int
 ) -> Dict[str, Any]:
     """Analyze user posture based on detected landmarks.
-    
+
     This function analyzes the position of key body points to determine
     whether the user is sitting or standing.
-    
+
     Args:
         landmarks: List of 33 pose landmarks in format (x, y, z, visibility)
         frame_height: Height of the video frame in pixels
         frame_width: Width of the video frame in pixels
-        
+
     Returns:
         Dictionary containing:
             - is_sitting: Boolean indicating sitting posture
             - confidence: Float confidence score (0.0-1.0)
             - posture: String describing the posture
-            
+
     Raises:
         ValueError: If landmarks list has incorrect length
-        
+
     Example:
         >>> landmarks = [(0.5, 0.5, 0.0, 0.9)] * 33
         >>> result = analyzer.analyze_posture(landmarks, 480, 640)
@@ -216,11 +216,11 @@ from src.module import MyClass
 
 class TestMyClass(unittest.TestCase):
     """Tests for MyClass functionality."""
-    
+
     def setUp(self):
         """Initialize test fixtures."""
         self.instance = MyClass()
-    
+
     def test_basic_functionality(self):
         """Test basic functionality works correctly."""
         result = self.instance.method()

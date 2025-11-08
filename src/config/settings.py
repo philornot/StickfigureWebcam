@@ -3,28 +3,22 @@
 
 import json
 import os
-from typing import Dict, Any
+from typing import Any, Dict
 
 # Domyślne ustawienia aplikacji
 DEFAULT_SETTINGS = {
-    "camera": {
-        "id": 0,
-        "width": 640,
-        "height": 480,
-        "fps": 30,
-        "flip_horizontal": True
-    },
+    "camera": {"id": 0, "width": 640, "height": 480, "fps": 30, "flip_horizontal": True},
     "pose_detection": {
         "model_complexity": 1,
         "min_detection_confidence": 0.6,
         "min_tracking_confidence": 0.6,
-        "smooth_landmarks": True
+        "smooth_landmarks": True,
     },
     "posture_analyzer": {
         "standing_hip_threshold": 0.7,
         "confidence_threshold": 0.6,
         "smoothing_factor": 0.7,
-        "temporal_smoothing": 5
+        "temporal_smoothing": 5,
     },
     "stick_figure": {
         "line_thickness": 3,
@@ -33,20 +27,14 @@ DEFAULT_SETTINGS = {
         "smoothing_history": 3,
         "bg_color": [255, 255, 255],
         "figure_color": [0, 0, 0],
-        "chair_color": [150, 75, 0]
+        "chair_color": [150, 75, 0],
     },
-    "app": {
-        "debug": False,
-        "log_level": "INFO",
-        "show_preview": True,
-        "show_landmarks": True
-    }
+    "app": {"debug": False, "log_level": "INFO", "show_preview": True, "show_landmarks": True},
 }
 
 # Ścieżka do pliku z zapisanymi ustawieniami
 SETTINGS_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "settings.json"
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "settings.json"
 )
 
 
@@ -61,7 +49,7 @@ def get_settings() -> Dict[str, Any]:
     # Jeśli plik ustawień istnieje, wczytaj go
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 settings = json.load(f)
 
             # Uzupełnij brakujące ustawienia domyślnymi
@@ -93,7 +81,7 @@ def save_settings(settings: Dict[str, Any]) -> bool:
         os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
         # Zapisz ustawienia
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=4)
 
         return True

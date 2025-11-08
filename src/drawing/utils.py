@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 # drawing/utils.py
 
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 
-def get_midpoint(p1: Optional[Tuple[int, int]], p2: Optional[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
+def get_midpoint(
+    p1: Optional[Tuple[int, int]], p2: Optional[Tuple[int, int]]
+) -> Optional[Tuple[int, int]]:
     """
     Bezpiecznie oblicza punkt środkowy między dwoma punktami.
 
@@ -31,7 +33,7 @@ def smooth_points(
     current_points: List[Tuple[float, float, float, float]],
     history: List[List[Tuple[float, float, float, float]]],
     history_length: int,
-    smooth_factor: float
+    smooth_factor: float,
 ) -> List[Tuple[float, float, float, float]]:
     """
     Wygładza ruch punktów charakterystycznych między klatkami.
@@ -120,10 +122,7 @@ def calculate_visibility(landmarks: List[Tuple[float, float, float, float]], ind
 
 
 def normalize_coordinates(
-    x: float,
-    y: float,
-    canvas_width: int,
-    canvas_height: int
+    x: float, y: float, canvas_width: int, canvas_height: int
 ) -> Tuple[int, int]:
     """
     Konwertuje znormalizowane współrzędne (0.0-1.0) na współrzędne pikselowe.
@@ -140,7 +139,9 @@ def normalize_coordinates(
     return (int(x * canvas_width), int(y * canvas_height))
 
 
-def is_point_visible(landmarks: List[Tuple[float, float, float, float]], index: int, threshold: float = 0.5) -> bool:
+def is_point_visible(
+    landmarks: List[Tuple[float, float, float, float]], index: int, threshold: float = 0.5
+) -> bool:
     """
     Sprawdza, czy dany punkt jest wystarczająco widoczny.
 

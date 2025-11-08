@@ -33,7 +33,7 @@ class TestPerformanceMonitor(unittest.TestCase):
         self.assertEqual(len(self.monitor.timing_markers), 0)
         self.assertEqual(len(self.monitor.segment_times), 0)
 
-    @patch('time.time')
+    @patch("time.time")
     def test_start_timer(self, mock_time):
         """Test rozpoczęcia pomiaru czasu."""
         # Konfigurujemy mocka time.time
@@ -45,7 +45,7 @@ class TestPerformanceMonitor(unittest.TestCase):
         # Sprawdzamy czy czas rozpoczęcia został zapisany
         self.assertEqual(self.monitor.start_time, 10.0)
 
-    @patch('time.time')
+    @patch("time.time")
     def test_stop_timer(self, mock_time):
         """Test zatrzymania pomiaru czasu."""
         # Konfigurujemy mocka time.time dla różnych wywołań
@@ -89,7 +89,9 @@ class TestPerformanceMonitor(unittest.TestCase):
         self.assertAlmostEqual(self.monitor.get_average_execution_time(), 0.3, places=6)
 
         # Sprawdzamy średnią ostatnich 3 pomiarów
-        self.assertAlmostEqual(self.monitor.get_average_execution_time(num_samples=3), 0.4, places=6)
+        self.assertAlmostEqual(
+            self.monitor.get_average_execution_time(num_samples=3), 0.4, places=6
+        )
 
     def test_get_current_fps(self):
         """Test pobierania bieżącego FPS."""
@@ -116,7 +118,7 @@ class TestPerformanceMonitor(unittest.TestCase):
         # Sprawdzamy średnią ostatnich 3 pomiarów
         self.assertEqual(self.monitor.get_average_fps(num_samples=3), 28.0)
 
-    @patch('time.time')
+    @patch("time.time")
     def test_mark_time(self, mock_time):
         """Test zapisywania znaczników czasu."""
         # Konfigurujemy mocka time.time
@@ -129,7 +131,7 @@ class TestPerformanceMonitor(unittest.TestCase):
         self.assertEqual(len(self.monitor.timing_markers), 1)
         self.assertEqual(self.monitor.timing_markers["start"], 10.0)
 
-    @patch('time.time')
+    @patch("time.time")
     def test_measure_segment(self, mock_time):
         """Test mierzenia czasu między znacznikami."""
         # Konfigurujemy mocka time.time dla różnych wywołań

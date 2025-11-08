@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import mediapipe as mp
@@ -48,30 +48,36 @@ class PoseDetector:
     # Definiujemy połączenia między punktami dla wizualizacji
     POSE_CONNECTIONS = [
         # Głowa
-        (NOSE, LEFT_EYE), (NOSE, RIGHT_EYE),
-        (LEFT_EYE, LEFT_EAR), (RIGHT_EYE, RIGHT_EAR),
-
+        (NOSE, LEFT_EYE),
+        (NOSE, RIGHT_EYE),
+        (LEFT_EYE, LEFT_EAR),
+        (RIGHT_EYE, RIGHT_EAR),
         # Tułów
-        (NOSE, LEFT_SHOULDER), (NOSE, RIGHT_SHOULDER),
+        (NOSE, LEFT_SHOULDER),
+        (NOSE, RIGHT_SHOULDER),
         (LEFT_SHOULDER, RIGHT_SHOULDER),
-        (LEFT_SHOULDER, LEFT_ELBOW), (RIGHT_SHOULDER, RIGHT_ELBOW),
-        (LEFT_ELBOW, LEFT_WRIST), (RIGHT_ELBOW, RIGHT_WRIST),
-        (LEFT_SHOULDER, LEFT_HIP), (RIGHT_SHOULDER, RIGHT_HIP),
+        (LEFT_SHOULDER, LEFT_ELBOW),
+        (RIGHT_SHOULDER, RIGHT_ELBOW),
+        (LEFT_ELBOW, LEFT_WRIST),
+        (RIGHT_ELBOW, RIGHT_WRIST),
+        (LEFT_SHOULDER, LEFT_HIP),
+        (RIGHT_SHOULDER, RIGHT_HIP),
         (LEFT_HIP, RIGHT_HIP),
-
         # Nogi
-        (LEFT_HIP, LEFT_KNEE), (RIGHT_HIP, RIGHT_KNEE),
-        (LEFT_KNEE, LEFT_ANKLE), (RIGHT_KNEE, RIGHT_ANKLE),
+        (LEFT_HIP, LEFT_KNEE),
+        (RIGHT_HIP, RIGHT_KNEE),
+        (LEFT_KNEE, LEFT_ANKLE),
+        (RIGHT_KNEE, RIGHT_ANKLE),
     ]
 
     def __init__(
-            self,
-            min_detection_confidence: float = 0.5,
-            min_tracking_confidence: float = 0.5,
-            model_complexity: int = 1,
-            smooth_landmarks: bool = True,
-            enable_segmentation: bool = False,
-            logger: Optional[CustomLogger] = None
+        self,
+        min_detection_confidence: float = 0.5,
+        min_tracking_confidence: float = 0.5,
+        model_complexity: int = 1,
+        smooth_landmarks: bool = True,
+        enable_segmentation: bool = False,
+        logger: Optional[CustomLogger] = None,
     ):
         """
         Inicjalizacja detektora pozy.
@@ -104,7 +110,7 @@ class PoseDetector:
         self.logger.debug(
             "PoseDetector",
             f"Inicjalizacja MediaPipe Pose (model_complexity={model_complexity})",
-            log_type="POSE"
+            log_type="POSE",
         )
 
         self.mp_drawing = mp.solutions.drawing_utils
@@ -118,13 +124,11 @@ class PoseDetector:
             smooth_landmarks=smooth_landmarks,
             enable_segmentation=enable_segmentation,
             min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence
+            min_tracking_confidence=min_tracking_confidence,
         )
 
         self.logger.info(
-            "PoseDetector",
-            "MediaPipe Pose zainicjalizowany pomyślnie",
-            log_type="POSE"
+            "PoseDetector", "MediaPipe Pose zainicjalizowany pomyślnie", log_type="POSE"
         )
 
     def detect_pose(self, image: np.ndarray) -> Tuple[bool, Dict[str, Any]]:
@@ -157,7 +161,7 @@ class PoseDetector:
                 "detection_score": 0.0,
                 "has_pose": False,
                 "frame_height": image.shape[0],
-                "frame_width": image.shape[1]
+                "frame_width": image.shape[1],
             }
 
             # Sprawdzenie czy poza została wykryta
@@ -177,7 +181,9 @@ class PoseDetector:
                 if results.pose_world_landmarks:
                     world_landmarks = []
                     for landmark in results.pose_world_landmarks.landmark:
-                        world_landmarks.append((landmark.x, landmark.y, landmark.z, landmark.visibility))
+                        world_landmarks.append(
+                            (landmark.x, landmark.y, landmark.z, landmark.visibility)
+                        )
 
                     pose_data["world_landmarks"] = world_landmarks
 
@@ -195,7 +201,7 @@ class PoseDetector:
                     self.logger.debug(
                         "PoseDetector",
                         f"Wykryto pozę z pewnością {self.last_detection_score:.2f}",
-                        log_type="POSE"
+                        log_type="POSE",
                     )
 
                 # Monitorowanie wydajności
@@ -208,7 +214,7 @@ class PoseDetector:
                         "PoseDetector",
                         f"Wykryto {self.detection_count} póz, "
                         f"stosunek detekcji: {self.detection_count / self.frame_count:.2f}",
-                        log_type="POSE"
+                        log_type="POSE",
                     )
                     self.logger.performance_metrics(0, execution_time, "PoseDetector")
 
@@ -220,15 +226,13 @@ class PoseDetector:
                 # Logowanie braku detekcji co 50 klatek bez detekcji
                 if self.frame_count % 50 == 0 and self.detection_count == 0:
                     self.logger.warning(
-                        "PoseDetector",
-                        "Nie wykryto pozy w ostatnich 50 klatkach",
-                        log_type="POSE"
+                        "PoseDetector", "Nie wykryto pozy w ostatnich 50 klatkach", log_type="POSE"
                     )
                 elif self.frame_count % 100 == 0:
                     self.logger.debug(
                         "PoseDetector",
                         f"Brak detekcji pozy, stosunek detekcji: {self.detection_count / self.frame_count:.2f}",
-                        log_type="POSE"
+                        log_type="POSE",
                     )
 
                 return False, pose_data
@@ -239,19 +243,19 @@ class PoseDetector:
                 "PoseDetector",
                 f"Błąd podczas detekcji pozy: {str(e)}",
                 log_type="POSE",
-                error={"error": str(e)}
+                error={"error": str(e)},
             )
             return False, {"error": str(e), "has_pose": False}
 
     def draw_pose_on_image(
-            self,
-            image: np.ndarray,
-            landmarks: List[Tuple[float, float, float, float]],
-            draw_connections: bool = True,
-            keypoint_radius: int = 5,
-            keypoint_color: Tuple[int, int, int] = (0, 255, 0),  # BGR: zielony
-            connection_color: Tuple[int, int, int] = (255, 255, 0),  # BGR: turkusowy
-            connection_thickness: int = 2
+        self,
+        image: np.ndarray,
+        landmarks: List[Tuple[float, float, float, float]],
+        draw_connections: bool = True,
+        keypoint_radius: int = 5,
+        keypoint_color: Tuple[int, int, int] = (0, 255, 0),  # BGR: zielony
+        connection_color: Tuple[int, int, int] = (255, 255, 0),  # BGR: turkusowy
+        connection_thickness: int = 2,
     ) -> np.ndarray:
         """
         Rysuje wykrytą pozę na obrazie.
@@ -294,12 +298,21 @@ class PoseDetector:
                 start_idx, end_idx = connection
 
                 # Sprawdzenie czy punkty istnieją i są widoczne
-                if (len(landmarks) > start_idx and len(landmarks) > end_idx and
-                        landmarks[start_idx][3] > 0.5 and landmarks[end_idx][3] > 0.5):
-                    start_point = (int(landmarks[start_idx][0] * w), int(landmarks[start_idx][1] * h))
+                if (
+                    len(landmarks) > start_idx
+                    and len(landmarks) > end_idx
+                    and landmarks[start_idx][3] > 0.5
+                    and landmarks[end_idx][3] > 0.5
+                ):
+                    start_point = (
+                        int(landmarks[start_idx][0] * w),
+                        int(landmarks[start_idx][1] * h),
+                    )
                     end_point = (int(landmarks[end_idx][0] * w), int(landmarks[end_idx][1] * h))
 
-                    cv2.line(img_copy, start_point, end_point, connection_color, connection_thickness)
+                    cv2.line(
+                        img_copy, start_point, end_point, connection_color, connection_thickness
+                    )
 
         return img_copy
 
@@ -331,16 +344,13 @@ class PoseDetector:
             img_copy,
             mp_landmarks,
             self.mp_pose.POSE_CONNECTIONS,
-            landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style()
+            landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style(),
         )
 
         return img_copy
 
     def _convert_to_mp_landmarks(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            img_width: int,
-            img_height: int
+        self, landmarks: List[Tuple[float, float, float, float]], img_width: int, img_height: int
     ) -> Any:
         """
         Konwertuje listę punktów do formatu MediaPipe.
@@ -356,7 +366,9 @@ class PoseDetector:
         landmark_list = self.mp_pose.PoseLandmarkList()
 
         for x, y, z, visibility in landmarks:
-            landmark = self.mp_pose.PoseLandmark()  # todo: Warning:(359, 50) Parameter(s) unfilledPossible callees:EnumMeta.__call__(cls: Type[_EnumMemberT], value, names: None = None)EnumMeta.__call__(cls: EnumMeta, value: str, names: str | Iterable[str] | Iterable[Iterable[str]] | Mapping[str, Any], *, module: str | None = None, qualname: str | None = None, type: Any | None = None, start: int = 1)
+            landmark = (
+                self.mp_pose.PoseLandmark()
+            )  # todo: Warning:(359, 50) Parameter(s) unfilledPossible callees:EnumMeta.__call__(cls: Type[_EnumMemberT], value, names: None = None)EnumMeta.__call__(cls: EnumMeta, value: str, names: str | Iterable[str] | Iterable[Iterable[str]] | Mapping[str, Any], *, module: str | None = None, qualname: str | None = None, type: Any | None = None, start: int = 1)
             landmark.x = x
             landmark.y = y
             landmark.z = z
@@ -366,11 +378,11 @@ class PoseDetector:
         return landmark_list
 
     def get_landmark_position(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            landmark_id: int,
-            img_width: int,
-            img_height: int
+        self,
+        landmarks: List[Tuple[float, float, float, float]],
+        landmark_id: int,
+        img_width: int,
+        img_height: int,
     ) -> Optional[Tuple[int, int, float, float]]:
         """
         Zwraca pozycję konkretnego punktu.
@@ -392,11 +404,11 @@ class PoseDetector:
         return (int(x * img_width), int(y * img_height), z, visibility)
 
     def calculate_angle(
-            self,
-            landmarks: List[Tuple[float, float, float, float]],
-            point1: int,
-            point2: int,
-            point3: int
+        self,
+        landmarks: List[Tuple[float, float, float, float]],
+        point1: int,
+        point2: int,
+        point3: int,
     ) -> float:
         """
         Oblicza kąt między trzema punktami.
@@ -410,7 +422,12 @@ class PoseDetector:
         Returns:
             float: Kąt w stopniach (0-180)
         """
-        if landmarks is None or point1 >= len(landmarks) or point2 >= len(landmarks) or point3 >= len(landmarks):
+        if (
+            landmarks is None
+            or point1 >= len(landmarks)
+            or point2 >= len(landmarks)
+            or point3 >= len(landmarks)
+        ):
             return 0.0
 
         # Pobieramy współrzędne punktów
@@ -444,7 +461,7 @@ class PoseDetector:
             "last_detection_score": self.last_detection_score,
             "model_complexity": self.model_complexity,
             "min_detection_confidence": self.min_detection_confidence,
-            "min_tracking_confidence": self.min_tracking_confidence
+            "min_tracking_confidence": self.min_tracking_confidence,
         }
 
     def reset_stats(self) -> None:
@@ -460,16 +477,14 @@ class PoseDetector:
         Zwalnia zasoby używane przez detektor.
         """
         try:
-            if hasattr(self, 'pose') and self.pose is not None:
+            if hasattr(self, "pose") and self.pose is not None:
                 self.pose.close()
                 self.pose = None  # Ustawiamy na None po zamknięciu
                 self.logger.debug("PoseDetector", "Detektor pozy zamknięty", log_type="POSE")
         except Exception as e:
             # Nie zgłaszamy wyjątku, tylko logujemy błąd
             self.logger.warning(
-                "PoseDetector",
-                f"Błąd podczas zamykania detektora pozy: {str(e)}",
-                log_type="POSE"
+                "PoseDetector", f"Błąd podczas zamykania detektora pozy: {str(e)}", log_type="POSE"
             )
 
     def __del__(self):
@@ -478,7 +493,7 @@ class PoseDetector:
         """
         try:
             # Wywołujemy close() tylko jeśli pose nie jest None
-            if hasattr(self, 'pose') and self.pose is not None:
+            if hasattr(self, "pose") and self.pose is not None:
                 self.close()
         except:
             # Ignorujemy błędy w destruktorze - nie ma sensu ich logować,

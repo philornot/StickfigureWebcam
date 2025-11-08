@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # src/drawing/pose_analyzer.py
 
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.utils.custom_logger import CustomLogger
 
@@ -22,11 +22,7 @@ class PoseAnalyzer:
     LEFT_WRIST = 15
     RIGHT_WRIST = 16
 
-    def __init__(
-        self,
-        sitting_threshold: float = 0.3,
-        logger: Optional[CustomLogger] = None
-    ):
+    def __init__(self, sitting_threshold: float = 0.3, logger: Optional[CustomLogger] = None):
         """
         Inicjalizacja analizatora pozy.
 
@@ -43,7 +39,7 @@ class PoseAnalyzer:
         self,
         landmarks: List[Tuple[float, float, float, float]],
         frame_width: int,
-        frame_height: int
+        frame_height: int,
     ) -> Dict[str, Any]:
         """
         Analizuje górną część ciała (popiersie) na podstawie punktów charakterystycznych.
@@ -65,11 +61,13 @@ class PoseAnalyzer:
             "shoulder_width_ratio": 0.0,
             "arms_extended": False,
             "left_arm_angle": 0.0,
-            "right_arm_angle": 0.0
+            "right_arm_angle": 0.0,
         }
 
         try:
-            if landmarks is None or len(landmarks) < 17:  # Potrzebujemy co najmniej punktów do nadgarstków
+            if (
+                landmarks is None or len(landmarks) < 17
+            ):  # Potrzebujemy co najmniej punktów do nadgarstków
                 return result
 
             # Sprawdzanie widoczności ramion
@@ -80,9 +78,11 @@ class PoseAnalyzer:
             # Pozycje ramion (pikselowe)
             if result["has_shoulders"]:
                 left_shoulder_pos = self._to_pixel_coords(
-                    landmarks[self.LEFT_SHOULDER], frame_width, frame_height)
+                    landmarks[self.LEFT_SHOULDER], frame_width, frame_height
+                )
                 right_shoulder_pos = self._to_pixel_coords(
-                    landmarks[self.RIGHT_SHOULDER], frame_width, frame_height)
+                    landmarks[self.RIGHT_SHOULDER], frame_width, frame_height
+                )
                 result["shoulder_positions"] = (left_shoulder_pos, right_shoulder_pos)
 
                 # Obliczenie szerokości ramion jako proporcji szerokości klatki
@@ -96,20 +96,24 @@ class PoseAnalyzer:
             right_wrist_visible = self._is_point_visible(landmarks[self.RIGHT_WRIST])
 
             # Flaga określająca czy wykryto ramiona
-            result["has_arms"] = (left_elbow_visible or right_elbow_visible)
+            result["has_arms"] = left_elbow_visible or right_elbow_visible
 
             # Pozycje łokci (pikselowe)
             if left_elbow_visible or right_elbow_visible:
                 elbow_positions = []
                 if left_elbow_visible:
-                    elbow_positions.append(self._to_pixel_coords(
-                        landmarks[self.LEFT_ELBOW], frame_width, frame_height))
+                    elbow_positions.append(
+                        self._to_pixel_coords(landmarks[self.LEFT_ELBOW], frame_width, frame_height)
+                    )
                 else:
                     elbow_positions.append(None)
 
                 if right_elbow_visible:
-                    elbow_positions.append(self._to_pixel_coords(
-                        landmarks[self.RIGHT_ELBOW], frame_width, frame_height))
+                    elbow_positions.append(
+                        self._to_pixel_coords(
+                            landmarks[self.RIGHT_ELBOW], frame_width, frame_height
+                        )
+                    )
                 else:
                     elbow_positions.append(None)
 
@@ -119,14 +123,18 @@ class PoseAnalyzer:
             if left_wrist_visible or right_wrist_visible:
                 wrist_positions = []
                 if left_wrist_visible:
-                    wrist_positions.append(self._to_pixel_coords(
-                        landmarks[self.LEFT_WRIST], frame_width, frame_height))
+                    wrist_positions.append(
+                        self._to_pixel_coords(landmarks[self.LEFT_WRIST], frame_width, frame_height)
+                    )
                 else:
                     wrist_positions.append(None)
 
                 if right_wrist_visible:
-                    wrist_positions.append(self._to_pixel_coords(
-                        landmarks[self.RIGHT_WRIST], frame_width, frame_height))
+                    wrist_positions.append(
+                        self._to_pixel_coords(
+                            landmarks[self.RIGHT_WRIST], frame_width, frame_height
+                        )
+                    )
                 else:
                     wrist_positions.append(None)
 
@@ -134,9 +142,12 @@ class PoseAnalyzer:
 
             # Sprawdzanie czy ręce są wyciągnięte (np. ręce uniesione)
             # Tylko jeśli mamy zarówno ramiona jak i łokcie
-            if (result["has_shoulders"] and result["has_arms"] and
-                result["shoulder_positions"] is not None and
-                result["elbow_positions"] is not None):
+            if (
+                result["has_shoulders"]
+                and result["has_arms"]
+                and result["shoulder_positions"] is not None
+                and result["elbow_positions"] is not None
+            ):
 
                 left_extended = False
                 right_extended = False
@@ -151,7 +162,7 @@ class PoseAnalyzer:
                     result["left_arm_angle"] = left_angle
 
                     # Jeśli kąt jest większy niż 45 stopni, ramię jest wyciągnięte
-                    left_extended = (left_angle > 45)
+                    left_extended = left_angle > 45
 
                 # Prawe ramię
                 if right_elbow_visible and right_shoulder_visible:
@@ -163,7 +174,7 @@ class PoseAnalyzer:
                     result["right_arm_angle"] = right_angle
 
                     # Jeśli kąt jest większy niż 45 stopni, ramię jest wyciągnięte
-                    right_extended = (right_angle > 45)
+                    right_extended = right_angle > 45
 
                 result["arms_extended"] = left_extended or right_extended
 
@@ -172,7 +183,7 @@ class PoseAnalyzer:
                     "PoseAnalyzer",
                     f"Górna część ciała wykryta: ramiona={result['has_shoulders']}, "
                     f"ręce={result['has_arms']}, uniesione={result['arms_extended']}",
-                    log_type="POSE"
+                    log_type="POSE",
                 )
 
         except Exception as e:
@@ -181,12 +192,14 @@ class PoseAnalyzer:
                     "PoseAnalyzer",
                     f"Błąd podczas analizy górnej części ciała: {str(e)}",
                     log_type="POSE",
-                    error={"error": str(e)}
+                    error={"error": str(e)},
                 )
 
         return result
 
-    def _is_point_visible(self, point: Tuple[float, float, float, float], threshold: float = 0.5) -> bool:
+    def _is_point_visible(
+        self, point: Tuple[float, float, float, float], threshold: float = 0.5
+    ) -> bool:
         """
         Sprawdza, czy punkt jest wystarczająco widoczny.
 
@@ -200,10 +213,7 @@ class PoseAnalyzer:
         return point[3] >= threshold
 
     def _to_pixel_coords(
-        self,
-        point: Tuple[float, float, float, float],
-        frame_width: int,
-        frame_height: int
+        self, point: Tuple[float, float, float, float], frame_width: int, frame_height: int
     ) -> Tuple[int, int]:
         """
         Konwertuje znormalizowane współrzędne punktu (0.0-1.0) na współrzędne pikselowe.
@@ -219,9 +229,7 @@ class PoseAnalyzer:
         return (int(point[0] * frame_width), int(point[1] * frame_height))
 
     def _calculate_vertical_angle(
-        self,
-        point1: Tuple[float, float, float, float],
-        point2: Tuple[float, float, float, float]
+        self, point1: Tuple[float, float, float, float], point2: Tuple[float, float, float, float]
     ) -> float:
         """
         Oblicza kąt między linią łączącą dwa punkty a pionem.
@@ -255,7 +263,7 @@ class PoseAnalyzer:
         dot_product = vector_y  # dot product z wektorem (0, 1) to po prostu vector_y
 
         # Długości wektorów
-        vector_length = math.sqrt(vector_x ** 2 + vector_y ** 2)
+        vector_length = math.sqrt(vector_x**2 + vector_y**2)
         vertical_length = 1.0  # długość wektora (0, 1)
 
         # Kosinus kąta

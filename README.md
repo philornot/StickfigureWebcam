@@ -64,10 +64,10 @@ wykorzystać w aplikacjach takich jak Discord, Zoom, Teams czy inne komunikatory
 2. Utwórz i aktywuj wirtualne środowisko (opcjonalnie, ale zalecane):
     ```bash
     python -m venv venv
-    
+
     # Windows:
     venv\Scripts\activate
-    
+
     # Linux/macOS:
     source venv/bin/activate
     ```
@@ -76,7 +76,7 @@ wykorzystać w aplikacjach takich jak Discord, Zoom, Teams czy inne komunikatory
     ```bash
     # Dla użytkowników: zainstaluj tylko aplikację
     pip install -e .
-    
+
     # Dla deweloperów: zainstaluj z narzędziami programistycznymi
     pip install -e ".[dev]"
     ```

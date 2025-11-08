@@ -9,4 +9,4 @@ z płynną animacją ruchu rąk, nawet gdy nie są wykrywane przez kamerę.
 from .face_renderer import SimpleFaceRenderer
 from .stick_figure_renderer import StickFigureRenderer
 
-__all__ = ['StickFigureRenderer', 'SimpleFaceRenderer']
+__all__ = ["StickFigureRenderer", "SimpleFaceRenderer"]
