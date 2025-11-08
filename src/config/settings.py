@@ -5,7 +5,7 @@ import json
 import os
 from typing import Any, Dict
 
-# Domyślne ustawienia aplikacji
+# Default application settings
 DEFAULT_SETTINGS = {
     "camera": {"id": 0, "width": 640, "height": 480, "fps": 30, "flip_horizontal": True},
     "pose_detection": {
@@ -32,7 +32,7 @@ DEFAULT_SETTINGS = {
     "app": {"debug": False, "log_level": "INFO", "show_preview": True, "show_landmarks": True},
 }
 
-# Ścieżka do pliku z zapisanymi ustawieniami
+# Path to the settings file
 SETTINGS_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "settings.json"
 )
@@ -40,66 +40,66 @@ SETTINGS_FILE = os.path.join(
 
 def get_settings() -> Dict[str, Any]:
     """
-    Wczytuje ustawienia aplikacji. Jeśli plik ustawień nie istnieje,
-    zwraca domyślne ustawienia.
+    Loads application settings. If the settings file doesn't exist,
+    returns default settings.
 
     Returns:
-        Dict[str, Any]: Ustawienia aplikacji
+        Dict[str, Any]: Application settings
     """
-    # Jeśli plik ustawień istnieje, wczytaj go
+    # If settings file exists, load it
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 settings = json.load(f)
 
-            # Uzupełnij brakujące ustawienia domyślnymi
+            # Fill missing settings with defaults
             merged_settings = DEFAULT_SETTINGS.copy()
             _deep_update(merged_settings, settings)
 
             return merged_settings
         except Exception as e:
-            print(f"Błąd podczas wczytywania ustawień: {e}")
-            print("Używanie domyślnych ustawień...")
+            print(f"Error loading settings: {e}")
+            print("Using default settings...")
             return DEFAULT_SETTINGS.copy()
     else:
-        # Jeśli plik nie istnieje, zwróć domyślne ustawienia
+        # If file doesn't exist, return default settings
         return DEFAULT_SETTINGS.copy()
 
 
 def save_settings(settings: Dict[str, Any]) -> bool:
     """
-    Zapisuje ustawienia do pliku.
+    Saves settings to file.
 
     Args:
-        settings (Dict[str, Any]): Ustawienia do zapisania
+        settings (Dict[str, Any]): Settings to save
 
     Returns:
-        bool: True jeśli udało się zapisać ustawienia, False w przeciwnym przypadku
+        bool: True if settings were saved successfully, False otherwise
     """
     try:
-        # Upewnij się, że katalog istnieje
+        # Ensure directory exists
         os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
-        # Zapisz ustawienia
+        # Save settings
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=4)
 
         return True
     except Exception as e:
-        print(f"Błąd podczas zapisywania ustawień: {e}")
+        print(f"Error saving settings: {e}")
         return False
 
 
 def _deep_update(target: Dict, source: Dict) -> Dict:
     """
-    Głębokie aktualizowanie słownika target wartościami z source.
+    Deep updates target dictionary with values from source.
 
     Args:
-        target (Dict): Słownik docelowy
-        source (Dict): Słownik źródłowy
+        target (Dict): Target dictionary
+        source (Dict): Source dictionary
 
     Returns:
-        Dict: Zaktualizowany słownik target
+        Dict: Updated target dictionary
     """
     for key, value in source.items():
         if key in target and isinstance(target[key], dict) and isinstance(value, dict):
@@ -112,15 +112,15 @@ def _deep_update(target: Dict, source: Dict) -> Dict:
 
 def get_setting(section: str, key: str, default: Any = None) -> Any:
     """
-    Pobiera pojedyncze ustawienie z określonej sekcji.
+    Gets a single setting from specified section.
 
     Args:
-        section (str): Nazwa sekcji
-        key (str): Klucz ustawienia
-        default (Any, optional): Wartość domyślna jeśli ustawienie nie istnieje
+        section (str): Section name
+        key (str): Setting key
+        default (Any, optional): Default value if setting doesn't exist
 
     Returns:
-        Any: Wartość ustawienia lub wartość domyślna
+        Any: Setting value or default value
     """
     settings = get_settings()
 
@@ -132,15 +132,15 @@ def get_setting(section: str, key: str, default: Any = None) -> Any:
 
 def update_setting(section: str, key: str, value: Any) -> bool:
     """
-    Aktualizuje pojedyncze ustawienie i zapisuje zmiany.
+    Updates a single setting and saves changes.
 
     Args:
-        section (str): Nazwa sekcji
-        key (str): Klucz ustawienia
-        value (Any): Nowa wartość
+        section (str): Section name
+        key (str): Setting key
+        value (Any): New value
 
     Returns:
-        bool: True jeśli udało się zaktualizować ustawienie, False w przeciwnym przypadku
+        bool: True if setting was updated successfully, False otherwise
     """
     settings = get_settings()
 
