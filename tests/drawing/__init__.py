@@ -2,5 +2,5 @@
 # -*- coding: utf-8 -*-
 
 """
-Testy dla modułu drawing, odpowiedzialnego za renderowanie stick figure.
+Tests for the drawing module, responsible for rendering stick figures.
 """

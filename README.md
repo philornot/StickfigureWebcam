@@ -11,7 +11,7 @@
 [![Importy: isort](https://img.shields.io/badge/importy-isort-%231674b1?style=flat)](https://pycqa.github.io/isort/)
 [![Typowanie statyczne: mypy](https://img.shields.io/badge/typowanie%20statyczne-mypy-blue)](http://mypy-lang.org/)
 
-<img src="stick-figure-animated.svg" width="250" height="250" alt="Animacja Stick Figure">
+<img src="creepy_stick-figure-animated.svg" width="250" height="250" alt="Animacja Stick Figure">
 
 _**Bądź ludzikiem z kresek na swojej następnej wideokonferencji!**_
 

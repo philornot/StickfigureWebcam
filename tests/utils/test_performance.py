@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Testy jednostkowe dla monitora wydajności (performance.py).
+Unit tests for performance monitor (performance.py).
 """
 
 import unittest
@@ -12,18 +12,18 @@ from src.utils.performance import PerformanceMonitor
 
 class TestPerformanceMonitor(unittest.TestCase):
     """
-    Testy dla klasy PerformanceMonitor, która mierzy czas wykonania, FPS
-    i przechowuje historię pomiarów.
+    Tests for PerformanceMonitor class that measures execution time, FPS
+    and stores measurement history.
     """
 
     def setUp(self):
-        """Inicjalizacja przed każdym testem."""
-        # Inicjalizacja monitora wydajności
+        """Initialize before each test."""
+        # Initialize performance monitor
         self.monitor = PerformanceMonitor("TestModule", history_size=5)
 
     def test_initialization(self):
-        """Test inicjalizacji monitora wydajności."""
-        # Sprawdzamy czy inicjalizacja przebiegła poprawnie
+        """Test performance monitor initialization."""
+        # Check if initialization completed correctly
         self.assertEqual(self.monitor.module_name, "TestModule")
         self.assertEqual(self.monitor.history_size, 5)
         self.assertIsNone(self.monitor.start_time)
@@ -35,141 +35,141 @@ class TestPerformanceMonitor(unittest.TestCase):
 
     @patch("time.time")
     def test_start_timer(self, mock_time):
-        """Test rozpoczęcia pomiaru czasu."""
-        # Konfigurujemy mocka time.time
+        """Test starting time measurement."""
+        # Configure time.time mock
         mock_time.return_value = 10.0
 
-        # Rozpoczynamy pomiar
+        # Start measurement
         self.monitor.start_timer()
 
-        # Sprawdzamy czy czas rozpoczęcia został zapisany
+        # Check if start time was saved
         self.assertEqual(self.monitor.start_time, 10.0)
 
     @patch("time.time")
     def test_stop_timer(self, mock_time):
-        """Test zatrzymania pomiaru czasu."""
-        # Konfigurujemy mocka time.time dla różnych wywołań
+        """Test stopping time measurement."""
+        # Configure time.time mock for different calls
         mock_time.side_effect = [10.0, 10.5, 11.0]
 
-        # Rozpoczynamy pomiar
+        # Start measurement
         self.monitor.start_timer()
 
-        # Zatrzymujemy pomiar
+        # Stop measurement
         execution_time = self.monitor.stop_timer()
 
-        # Sprawdzamy wyniki
+        # Check results
         self.assertEqual(execution_time, 0.5)  # 10.5 - 10.0
         self.assertEqual(len(self.monitor.execution_times), 1)
         self.assertEqual(self.monitor.execution_times[0], 0.5)
         self.assertEqual(self.monitor.frame_counter, 1)
 
-        # Nie testujemy aktualizacji FPS, bo wymaga więcej przygotowań mocków
-        # i jest bardziej podatna na błędy
+        # Don't test FPS update, because it requires more mock preparation
+        # and is more prone to errors
 
     def test_get_last_execution_time(self):
-        """Test pobierania ostatniego czasu wykonania."""
-        # Gdy brak pomiarów
+        """Test getting last execution time."""
+        # When no measurements
         self.assertEqual(self.monitor.get_last_execution_time(), 0.0)
 
-        # Dodajemy pomiar
+        # Add measurement
         self.monitor.execution_times.append(0.5)
 
-        # Sprawdzamy ostatni czas
+        # Check last time
         self.assertEqual(self.monitor.get_last_execution_time(), 0.5)
 
     def test_get_average_execution_time(self):
-        """Test obliczania średniego czasu wykonania."""
-        # Gdy brak pomiarów
+        """Test calculating average execution time."""
+        # When no measurements
         self.assertEqual(self.monitor.get_average_execution_time(), 0.0)
 
-        # Dodajemy pomiary
+        # Add measurements
         self.monitor.execution_times.extend([0.1, 0.2, 0.3, 0.4, 0.5])
 
-        # Sprawdzamy średnią wszystkich pomiarów
+        # Check average of all measurements
         self.assertAlmostEqual(self.monitor.get_average_execution_time(), 0.3, places=6)
 
-        # Sprawdzamy średnią ostatnich 3 pomiarów
+        # Check average of last 3 measurements
         self.assertAlmostEqual(
             self.monitor.get_average_execution_time(num_samples=3), 0.4, places=6
         )
 
     def test_get_current_fps(self):
-        """Test pobierania bieżącego FPS."""
-        # Gdy brak pomiarów
+        """Test getting current FPS."""
+        # When no measurements
         self.assertEqual(self.monitor.get_current_fps(), 0.0)
 
-        # Dodajemy pomiar FPS
+        # Add FPS measurement
         self.monitor.fps_history.append(30.0)
 
-        # Sprawdzamy bieżący FPS
+        # Check current FPS
         self.assertEqual(self.monitor.get_current_fps(), 30.0)
 
     def test_get_average_fps(self):
-        """Test obliczania średniego FPS."""
-        # Gdy brak pomiarów
+        """Test calculating average FPS."""
+        # When no measurements
         self.assertEqual(self.monitor.get_average_fps(), 0.0)
 
-        # Dodajemy pomiary FPS
+        # Add FPS measurements
         self.monitor.fps_history.extend([25.0, 27.0, 30.0, 28.0, 26.0])
 
-        # Sprawdzamy średnią wszystkich pomiarów
+        # Check average of all measurements
         self.assertEqual(self.monitor.get_average_fps(), 27.2)
 
-        # Sprawdzamy średnią ostatnich 3 pomiarów
+        # Check average of last 3 measurements
         self.assertEqual(self.monitor.get_average_fps(num_samples=3), 28.0)
 
     @patch("time.time")
     def test_mark_time(self, mock_time):
-        """Test zapisywania znaczników czasu."""
-        # Konfigurujemy mocka time.time
+        """Test saving time markers."""
+        # Configure time.time mock
         mock_time.return_value = 10.0
 
-        # Zapisujemy znacznik czasu
+        # Save time marker
         self.monitor.mark_time("start")
 
-        # Sprawdzamy czy znacznik został zapisany
+        # Check if marker was saved
         self.assertEqual(len(self.monitor.timing_markers), 1)
         self.assertEqual(self.monitor.timing_markers["start"], 10.0)
 
     @patch("time.time")
     def test_measure_segment(self, mock_time):
-        """Test mierzenia czasu między znacznikami."""
-        # Konfigurujemy mocka time.time dla różnych wywołań
+        """Test measuring time between markers."""
+        # Configure time.time mock for different calls
         mock_time.side_effect = [10.0, 10.5]
 
-        # Zapisujemy znaczniki czasu
+        # Save time markers
         self.monitor.mark_time("start")
         self.monitor.mark_time("end")
 
-        # Mierzymy segment
+        # Measure segment
         duration = self.monitor.measure_segment("start", "end", "test_segment")
 
-        # Sprawdzamy wyniki
+        # Check results
         self.assertEqual(duration, 0.5)
         self.assertEqual(len(self.monitor.segment_times), 1)
         self.assertEqual(len(self.monitor.segment_times["test_segment"]), 1)
         self.assertEqual(self.monitor.segment_times["test_segment"][0], 0.5)
 
-        # Test dla nieistniejących znaczników
+        # Test for non-existent markers
         self.assertEqual(self.monitor.measure_segment("non_existent", "end", "invalid"), -1.0)
 
     def test_get_segment_stats(self):
-        """Test pobierania statystyk segmentu."""
-        # Gdy brak segmentu
+        """Test getting segment statistics."""
+        # When no segment
         self.assertEqual(self.monitor.get_segment_stats("non_existent"), (0.0, 0.0, 0.0))
 
-        # Dodajemy pomiary dla segmentu
+        # Add measurements for segment
         self.monitor.segment_times["test_segment"] = [0.1, 0.2, 0.3, 0.4, 0.5]
 
-        # Sprawdzamy statystyki
+        # Check statistics
         avg, min_time, max_time = self.monitor.get_segment_stats("test_segment")
         self.assertAlmostEqual(avg, 0.3, places=6)
         self.assertEqual(min_time, 0.1)
         self.assertEqual(max_time, 0.5)
 
     def test_reset(self):
-        """Test resetowania monitora wydajności."""
-        # Dodajemy dane
+        """Test resetting performance monitor."""
+        # Add data
         self.monitor.start_time = 10.0
         self.monitor.execution_times.append(0.5)
         self.monitor.fps_history.append(30.0)
@@ -177,10 +177,10 @@ class TestPerformanceMonitor(unittest.TestCase):
         self.monitor.timing_markers["start"] = 10.0
         self.monitor.segment_times["test_segment"] = [0.5]
 
-        # Resetujemy
+        # Reset
         self.monitor.reset()
 
-        # Sprawdzamy czy wszystko zostało zresetowane
+        # Check if everything was reset
         self.assertIsNone(self.monitor.start_time)
         self.assertEqual(len(self.monitor.execution_times), 0)
         self.assertEqual(len(self.monitor.fps_history), 0)
@@ -189,18 +189,18 @@ class TestPerformanceMonitor(unittest.TestCase):
         self.assertEqual(len(self.monitor.segment_times), 0)
 
     def test_get_performance_summary(self):
-        """Test tworzenia podsumowania wydajności."""
-        # Dodajemy dane
+        """Test creating performance summary."""
+        # Add data
         self.monitor.execution_times.extend([0.1, 0.2, 0.3, 0.4, 0.5])
         self.monitor.fps_history.extend([25.0, 27.0, 30.0, 28.0, 26.0])
 
-        # Dodajemy segment
+        # Add segment
         self.monitor.segment_times["test_segment"] = [0.1, 0.2, 0.3]
 
-        # Pobieramy podsumowanie
+        # Get summary
         summary = self.monitor.get_performance_summary()
 
-        # Sprawdzamy zawartość podsumowania
+        # Check summary content
         self.assertEqual(summary["module"], "TestModule")
         self.assertAlmostEqual(summary["avg_execution_time"], 0.3, places=6)
         self.assertAlmostEqual(summary["avg_execution_time_ms"], 300.0, places=6)
@@ -209,7 +209,7 @@ class TestPerformanceMonitor(unittest.TestCase):
         self.assertEqual(summary["current_fps"], 26.0)
         self.assertEqual(summary["samples_count"], 5)
 
-        # Sprawdzamy statystyki segmentu
+        # Check segment statistics
         self.assertIn("segments", summary)
         self.assertIn("test_segment", summary["segments"])
         segment_stats = summary["segments"]["test_segment"]

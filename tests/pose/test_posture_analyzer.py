@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Testy jednostkowe dla analizatora postawy (PostureAnalyzer).
+Unit tests for posture analyzer (PostureAnalyzer).
 """
 
 import unittest
@@ -12,15 +12,15 @@ from src.pose.posture_analyzer import PostureAnalyzer
 
 class TestPostureAnalyzer(unittest.TestCase):
     """
-    Testy dla klasy PostureAnalyzer, która analizuje pozę i określa czy użytkownik siedzi czy stoi.
+    Tests for PostureAnalyzer class that analyzes posture and determines if user is sitting or standing.
     """
 
     def setUp(self):
-        """Inicjalizacja przed każdym testem."""
-        # Mock loggera
+        """Initialization before each test."""
+        # Mock logger
         self.mock_logger = MagicMock()
 
-        # Tworzenie analizatora postawy z mockiem loggera
+        # Create posture analyzer with mock logger
         self.analyzer = PostureAnalyzer(
             standing_hip_threshold=0.7,
             confidence_threshold=0.6,
@@ -31,18 +31,18 @@ class TestPostureAnalyzer(unittest.TestCase):
         )
 
     def test_analyze_posture_no_landmarks(self):
-        """Test analizy postawy gdy brak punktów charakterystycznych."""
+        """Test posture analysis when no landmarks are available."""
         result = self.analyzer.analyze_posture(None, 480, 640)
 
-        # Sprawdzenie czy wynik zawiera oczekiwane klucze
+        # Check if result contains expected keys
         self.assertIsNone(result["is_sitting"])
         self.assertEqual(result["posture"], "unknown")
         self.assertEqual(result["confidence"], 0.0)
         self.assertEqual(result["visible_keypoints"], 0)
 
     def test_analyze_posture_too_few_landmarks(self):
-        """Test analizy postawy gdy jest za mało punktów charakterystycznych."""
-        # Tworzymy tylko 10 punktów zamiast wymaganych 33
+        """Test posture analysis when there are too few landmarks."""
+        # Create only 10 points instead of required 33
         landmarks = [(0, 0, 0, 0.9)] * 10
 
         result = self.analyzer.analyze_posture(landmarks, 480, 640)
@@ -51,70 +51,70 @@ class TestPostureAnalyzer(unittest.TestCase):
         self.assertEqual(result["posture"], "unknown")
 
     def test_analyze_posture_sitting(self):
-        """Test analizy postawy w pozycji siedzącej."""
-        # Tworzymy sztuczne dane punktów charakterystycznych dla postawy siedzącej
+        """Test posture analysis in sitting position."""
+        # Create artificial landmark data for sitting posture
         # Format: (x, y, z, visibility)
-        landmarks = [(0, 0, 0, 0.9)] * 33  # Najpierw inicjalizujemy wszystkie punkty
+        landmarks = [(0, 0, 0, 0.9)] * 33  # First initialize all points
 
-        # Teraz nadpisujemy konkretne punkty, które są ważne dla detekcji
-        # Biodra umieszczamy nisko (wartość y > 0.7)
+        # Now overwrite specific points that are important for detection
+        # Place hips low (y value > 0.7)
         landmarks[self.analyzer.LEFT_HIP] = (0.4, 0.8, 0, 0.9)
         landmarks[self.analyzer.RIGHT_HIP] = (0.6, 0.8, 0, 0.9)
 
-        # Ramiona umieszczamy wyżej
+        # Place shoulders higher
         landmarks[self.analyzer.LEFT_SHOULDER] = (0.35, 0.5, 0, 0.9)
         landmarks[self.analyzer.RIGHT_SHOULDER] = (0.65, 0.5, 0, 0.9)
 
-        # Kolana umieszczamy nisko ale z niską widocznością (ukryte pod biurkiem)
+        # Place knees low but with low visibility (hidden under desk)
         landmarks[self.analyzer.LEFT_KNEE] = (0.4, 0.9, 0, 0.3)
         landmarks[self.analyzer.RIGHT_KNEE] = (0.6, 0.9, 0, 0.3)
 
-        # Kostki są niewidoczne (ukryte pod biurkiem)
+        # Ankles are invisible (hidden under desk)
         landmarks[self.analyzer.LEFT_ANKLE] = (0.4, 0.95, 0, 0.1)
         landmarks[self.analyzer.RIGHT_ANKLE] = (0.6, 0.95, 0, 0.1)
 
-        # Symulujemy kilka klatek tej samej pozy aby uzyskać stabilną detekcję
+        # Simulate several frames of same position to get stable detection
         for _ in range(5):
             result = self.analyzer.analyze_posture(landmarks, 480, 640)
 
-        # Po kilku klatkach powinniśmy mieć stabilną detekcję siedzenia
+        # After several frames we should have stable sitting detection
         self.assertTrue(result["is_sitting"])
         self.assertEqual(result["posture"], "sitting")
         self.assertGreaterEqual(result["sitting_probability"], 0.6)
 
     def test_analyze_posture_standing(self):
-        """Test analizy postawy w pozycji stojącej."""
-        # Tworzymy sztuczne dane punktów charakterystycznych dla postawy stojącej
+        """Test posture analysis in standing position."""
+        # Create artificial landmark data for standing posture
         landmarks = [(0, 0, 0, 0.9)] * 33
 
-        # Biodra umieszczamy wysoko (wartość y < 0.5) aby zapewnić detekcję stania
+        # Place hips high (y value < 0.5) to ensure standing detection
         landmarks[self.analyzer.LEFT_HIP] = (0.4, 0.4, 0, 0.9)
         landmarks[self.analyzer.RIGHT_HIP] = (0.6, 0.4, 0, 0.9)
 
-        # Ramiona umieszczamy jeszcze wyżej
+        # Place shoulders even higher
         landmarks[self.analyzer.LEFT_SHOULDER] = (0.35, 0.2, 0, 0.9)
         landmarks[self.analyzer.RIGHT_SHOULDER] = (0.65, 0.2, 0, 0.9)
 
-        # Kolana są widoczne
+        # Knees are visible
         landmarks[self.analyzer.LEFT_KNEE] = (0.4, 0.6, 0, 0.9)
         landmarks[self.analyzer.RIGHT_KNEE] = (0.6, 0.6, 0, 0.9)
 
-        # Kostki są widoczne
+        # Ankles are visible
         landmarks[self.analyzer.LEFT_ANKLE] = (0.4, 0.8, 0, 0.9)
         landmarks[self.analyzer.RIGHT_ANKLE] = (0.6, 0.8, 0, 0.9)
 
-        # Symulujemy wiele klatek tej samej pozy aby uzyskać stabilną detekcję
-        for _ in range(15):  # Więcej klatek aby przełamać preferencję siedzenia
+        # Simulate many frames of same position to get stable detection
+        for _ in range(15):  # More frames to overcome sitting preference
             result = self.analyzer.analyze_posture(landmarks, 480, 640)
 
-        # Po wielu klatkach powinniśmy mieć stabilną detekcję stania
+        # After many frames we should have stable standing detection
         self.assertFalse(result["is_sitting"])
         self.assertEqual(result["posture"], "standing")
         self.assertLessEqual(result["sitting_probability"], 0.4)
 
     def test_temporal_smoothing(self):
-        """Test wygładzania czasowego detekcji."""
-        # Najpierw symulujemy 5 klatek osoby siedzącej
+        """Test temporal smoothing of detection."""
+        # First simulate 5 frames of sitting person
         sitting_landmarks = [(0, 0, 0, 0.9)] * 33
         sitting_landmarks[self.analyzer.LEFT_HIP] = (0.4, 0.8, 0, 0.9)
         sitting_landmarks[self.analyzer.RIGHT_HIP] = (0.6, 0.8, 0, 0.9)
@@ -126,11 +126,11 @@ class TestPostureAnalyzer(unittest.TestCase):
         for _ in range(5):
             result = self.analyzer.analyze_posture(sitting_landmarks, 480, 640)
 
-        # Zapamiętujemy stan i prawdopodobieństwo
+        # Remember state and probability
         sitting_probability = result["sitting_probability"]
         self.assertTrue(result["is_sitting"])
 
-        # Teraz symulujemy 1 klatkę osoby stojącej - nie powinno to jeszcze zmienić detekcji
+        # Now simulate 1 frame of standing person - shouldn't change detection yet
         standing_landmarks = [(0, 0, 0, 0.9)] * 33
         standing_landmarks[self.analyzer.LEFT_HIP] = (0.4, 0.4, 0, 0.9)
         standing_landmarks[self.analyzer.RIGHT_HIP] = (0.6, 0.4, 0, 0.9)
@@ -141,28 +141,28 @@ class TestPostureAnalyzer(unittest.TestCase):
 
         result = self.analyzer.analyze_posture(standing_landmarks, 480, 640)
 
-        # Po jednej klatce stojącej detekcja wciąż powinna pokazywać siedzenie
-        # ale probability powinno się trochę zmniejszyć
+        # After one standing frame detection should still show sitting
+        # but probability should decrease somewhat
         self.assertTrue(result["is_sitting"])
         self.assertLess(result["sitting_probability"], sitting_probability)
 
-        # Symulujemy jeszcze wiele klatek stojących - teraz powinno zmienić detekcję
-        for _ in range(15):  # Potrzeba więcej klatek żeby przełamać preferencję siedzenia
+        # Simulate more standing frames - now should change detection
+        for _ in range(15):  # Need more frames to overcome sitting preference
             result = self.analyzer.analyze_posture(standing_landmarks, 480, 640)
 
-        # Teraz powinniśmy wykryć stanie
+        # Now we should detect standing
         self.assertFalse(result["is_sitting"])
         self.assertEqual(result["posture"], "standing")
 
     def test_update_thresholds(self):
-        """Test aktualizacji progów detekcji."""
-        # Zapisujemy początkowe wartości
+        """Test updating detection thresholds."""
+        # Save initial values
         initial_hip_threshold = self.analyzer.standing_hip_threshold
         initial_confidence_threshold = self.analyzer.confidence_threshold
         initial_smoothing_factor = self.analyzer.smoothing_factor
         initial_bias = self.analyzer.partial_visibility_bias
 
-        # Aktualizujemy wartości
+        # Update values
         new_hip_threshold = 0.6
         new_confidence_threshold = 0.7
         new_smoothing_factor = 0.5
@@ -175,34 +175,34 @@ class TestPostureAnalyzer(unittest.TestCase):
             partial_visibility_bias=new_bias,
         )
 
-        # Sprawdzamy czy wartości zostały zaktualizowane
+        # Check if values were updated
         self.assertEqual(self.analyzer.standing_hip_threshold, new_hip_threshold)
         self.assertEqual(self.analyzer.confidence_threshold, new_confidence_threshold)
         self.assertEqual(self.analyzer.smoothing_factor, new_smoothing_factor)
         self.assertEqual(self.analyzer.partial_visibility_bias, new_bias)
 
-        # Sprawdzamy czy logger został wywołany - ale nie sprawdzamy ile razy
-        # (może zostać wywołany podczas inicjalizacji i aktualizacji)
+        # Check if logger was called - but don't check how many times
+        # (may be called during initialization and update)
         self.mock_logger.info.assert_called()
 
     def test_reset(self):
-        """Test resetowania stanu analizatora."""
-        # Najpierw symulujemy kilka klatek aby ustawić stan
+        """Test resetting analyzer state."""
+        # First simulate several frames to set state
         landmarks = [(0, 0, 0, 0.9)] * 33
 
         for _ in range(3):
             self.analyzer.analyze_posture(landmarks, 480, 640)
 
-        # Resetujemy stan
+        # Reset state
         self.analyzer.reset()
 
-        # Sprawdzamy czy stan został zresetowany
+        # Check if state was reset
         self.assertIsNone(self.analyzer.is_sitting)
         self.assertEqual(self.analyzer.sitting_probability, 0.5)
         self.assertEqual(self.analyzer.history_buffer, [])
         self.assertEqual(self.analyzer.consecutive_frames, 0)
 
-        # Sprawdzamy czy logger został wywołany
+        # Check if logger was called
         self.mock_logger.debug.assert_called()
 
 

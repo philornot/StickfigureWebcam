@@ -9,14 +9,14 @@ def get_midpoint(
     p1: Optional[Tuple[int, int]], p2: Optional[Tuple[int, int]]
 ) -> Optional[Tuple[int, int]]:
     """
-    Bezpiecznie oblicza punkt środkowy między dwoma punktami.
+    Safely calculates the midpoint between two points.
 
     Args:
-        p1: Pierwszy punkt (x, y)
-        p2: Drugi punkt (x, y)
+        p1: First point (x, y)
+        p2: Second point (x, y)
 
     Returns:
-        Optional[Tuple[int, int]]: Punkt środkowy (x, y) lub None jeśli punkty niedostępne
+        Midpoint (x, y) or None if points unavailable
     """
     if p1 is None or p2 is None:
         return None
@@ -36,43 +36,43 @@ def smooth_points(
     smooth_factor: float,
 ) -> List[Tuple[float, float, float, float]]:
     """
-    Wygładza ruch punktów charakterystycznych między klatkami.
+    Smooths landmark point movement between frames.
 
     Args:
-        current_points (List[Tuple[float, float, float, float]]): Aktualne punkty
-        history (List[List[Tuple[float, float, float, float]]]): Historia poprzednich punktów
-        history_length (int): Maksymalna długość historii
-        smooth_factor (float): Współczynnik wygładzania (0.0-1.0)
+        current_points: Current points
+        history: History of previous points
+        history_length: Maximum history length
+        smooth_factor: Smoothing factor (0.0-1.0)
 
     Returns:
-        List[Tuple[float, float, float, float]]: Wygładzone punkty
+        Smoothed points
     """
-    # Jeśli nie ma historii, zwracamy bieżące punkty
+    # If no history, return current points
     if not history or len(history) == 0:
         return current_points
 
-    # Wygładzanie punktów
+    # Smooth points
     smoothed_points = []
 
-    # Dla każdego punktu
+    # For each point
     for i in range(len(current_points)):
-        # Zbierz ten sam punkt z poprzednich klatek
+        # Collect the same point from previous frames
         point_history = []
         for frame in history:
             if i < len(frame):
                 point_history.append(frame[i])
 
-        # Jeśli nie ma historii dla tego punktu, użyj bieżącej wartości
+        # If no history for this point, use current value
         if not point_history:
             smoothed_points.append(current_points[i])
             continue
 
-        # Oblicz wygładzoną wartość z większą wagą dla nowszych punktów
+        # Calculate smoothed value with higher weight for newer points
         x_sum, y_sum, z_sum, vis_sum = 0.0, 0.0, 0.0, 0.0
         weight_sum = 0.0
 
         for j, (x, y, z, vis) in enumerate(point_history):
-            # Większa waga dla nowszych punktów
+            # Higher weight for newer points
             weight = j + 1
             weight_sum += weight
 
@@ -81,14 +81,14 @@ def smooth_points(
             z_sum += z * weight
             vis_sum += vis * weight
 
-        # Normalizuj przez sumę wag
+        # Normalize by weight sum
         if weight_sum > 0:
             x_smooth = x_sum / weight_sum
             y_smooth = y_sum / weight_sum
             z_smooth = z_sum / weight_sum
             vis_smooth = vis_sum / weight_sum
 
-            # Zastosuj współczynnik wygładzania (im większy, tym bardziej wygładzony ruch)
+            # Apply smoothing factor (higher = more smoothed movement)
             x_final = current_points[i][0] * (1 - smooth_factor) + x_smooth * smooth_factor
             y_final = current_points[i][1] * (1 - smooth_factor) + y_smooth * smooth_factor
             z_final = current_points[i][2] * (1 - smooth_factor) + z_smooth * smooth_factor
@@ -103,20 +103,20 @@ def smooth_points(
 
 def calculate_visibility(landmarks: List[Tuple[float, float, float, float]], index: int) -> float:
     """
-    Zwraca widoczność danego punktu charakterystycznego.
+    Returns the visibility of a given landmark point.
 
     Args:
-        landmarks (List[Tuple[float, float, float, float]]): Lista punktów charakterystycznych
-        index (int): Indeks punktu
+        landmarks: List of landmark points
+        index: Point index
 
     Returns:
-        float: Wartość widoczności (0.0-1.0) lub 0.0 jeśli punkt niedostępny
+        Visibility value (0.0-1.0) or 0.0 if point unavailable
     """
     if landmarks is None or index >= len(landmarks):
         return 0.0
 
     try:
-        return landmarks[index][3]  # Czwarty element to widoczność
+        return landmarks[index][3]  # Fourth element is visibility
     except (IndexError, TypeError):
         return 0.0
 
@@ -125,16 +125,16 @@ def normalize_coordinates(
     x: float, y: float, canvas_width: int, canvas_height: int
 ) -> Tuple[int, int]:
     """
-    Konwertuje znormalizowane współrzędne (0.0-1.0) na współrzędne pikselowe.
+    Converts normalized coordinates (0.0-1.0) to pixel coordinates.
 
     Args:
-        x (float): Znormalizowana współrzędna X
-        y (float): Znormalizowana współrzędna Y
-        canvas_width (int): Szerokość obrazu docelowego
-        canvas_height (int): Wysokość obrazu docelowego
+        x: Normalized X coordinate
+        y: Normalized Y coordinate
+        canvas_width: Target image width
+        canvas_height: Target image height
 
     Returns:
-        Tuple[int, int]: Współrzędne pikselowe (x, y)
+        Pixel coordinates (x, y)
     """
     return (int(x * canvas_width), int(y * canvas_height))
 
@@ -143,15 +143,15 @@ def is_point_visible(
     landmarks: List[Tuple[float, float, float, float]], index: int, threshold: float = 0.5
 ) -> bool:
     """
-    Sprawdza, czy dany punkt jest wystarczająco widoczny.
+    Checks if a given point is sufficiently visible.
 
     Args:
-        landmarks (List[Tuple[float, float, float, float]]): Lista punktów charakterystycznych
-        index (int): Indeks punktu
-        threshold (float): Próg widoczności (0.0-1.0)
+        landmarks: List of landmark points
+        index: Point index
+        threshold: Visibility threshold (0.0-1.0)
 
     Returns:
-        bool: True jeśli punkt jest widoczny powyżej progu, False w przeciwnym razie
+        True if point visibility is above threshold, False otherwise
     """
     visibility = calculate_visibility(landmarks, index)
     return visibility >= threshold

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-# Dodanie ścieżki głównego katalogu projektu do sys.path
+# Add main project directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.drawing.stick_figure_renderer import StickFigureRenderer
@@ -18,15 +18,15 @@ from src.drawing.stick_figure_renderer import StickFigureRenderer
 
 class TestHandTracking(unittest.TestCase):
     """
-    Testy dla mechanizmu śledzenia rąk w StickFigureRenderer.
+    Tests for hand tracking mechanism in StickFigureRenderer.
     """
 
     def setUp(self):
-        """Inicjalizacja przed każdym testem."""
-        # Mock loggera
+        """Initialization before each test."""
+        # Mock logger
         self.mock_logger = MagicMock()
 
-        # Tworzenie renderera
+        # Create renderer
         self.renderer = StickFigureRenderer(
             canvas_width=640,
             canvas_height=480,
@@ -41,35 +41,35 @@ class TestHandTracking(unittest.TestCase):
         )
 
     def test_update_arm_positions_without_data(self):
-        """Test aktualizacji pozycji rąk bez danych wejściowych."""
-        # Ręce powinny być w pozycji neutralnej
+        """Test updating arm positions without input data."""
+        # Arms should be in neutral position
         self.renderer._update_arm_positions(None)
 
-        # Sprawdzamy czy pozycje rąk zostały zainicjowane jako None
+        # Check if arm positions were initialized as None
         self.assertIsNone(self.renderer.last_left_elbow)
         self.assertIsNone(self.renderer.last_right_elbow)
         self.assertIsNone(self.renderer.last_left_wrist)
         self.assertIsNone(self.renderer.last_right_wrist)
 
-        # Ustawiamy jakieś wartości
+        # Set some values
         self.renderer.last_left_elbow = (100, 100)
         self.renderer.last_right_elbow = (200, 100)
         self.renderer.last_left_wrist = (80, 150)
         self.renderer.last_right_wrist = (220, 150)
 
-        # Ponownie aktualizujemy bez danych - powinny przejść w stronę neutralnej pozycji
+        # Update again without data - should transition toward neutral position
         self.renderer._update_arm_positions(None)
 
-        # Sprawdzamy czy pozycje zostały zmienione (przesunięte w stronę neutralnych pozycji)
-        # Nie sprawdzamy dokładnych wartości, bo te zależą od timera animacji
+        # Check if positions were changed (moved toward neutral positions)
+        # Don't check exact values as they depend on animation timer
         self.assertIsNotNone(self.renderer.last_left_elbow)
         self.assertIsNotNone(self.renderer.last_right_elbow)
         self.assertIsNotNone(self.renderer.last_left_wrist)
         self.assertIsNotNone(self.renderer.last_right_wrist)
 
     def test_update_arm_positions_with_hand_data(self):
-        """Test aktualizacji pozycji rąk z danymi z MediaPipe Hands."""
-        # Tworzymy sztuczne dane rąk
+        """Test updating arm positions with MediaPipe Hands data."""
+        # Create artificial hand data
         hands_data = {
             "hands_data": {
                 "left_hand": {
@@ -85,28 +85,28 @@ class TestHandTracking(unittest.TestCase):
             }
         }
 
-        # Aktualizujemy pozycje rąk
+        # Update arm positions
         self.renderer._update_arm_positions(hands_data)
 
-        # Sprawdzamy czy flagi widoczności zostały ustawione
+        # Check if visibility flags were set
         self.assertTrue(self.renderer.left_arm_visible)
         self.assertTrue(self.renderer.right_arm_visible)
 
-        # Sprawdzamy czy pozycje zostały zaktualizowane
+        # Check if positions were updated
         self.assertIsNotNone(self.renderer.last_left_elbow)
         self.assertIsNotNone(self.renderer.last_right_elbow)
         self.assertIsNotNone(self.renderer.last_left_wrist)
         self.assertIsNotNone(self.renderer.last_right_wrist)
 
-        # Sprawdzamy przybliżone wartości (z uwzględnieniem wygładzania)
-        left_elbow_x = int(0.35 * 640 * (1 - self.renderer.smooth_factor))  # Pierwszy raz
+        # Check approximate values (considering smoothing)
+        left_elbow_x = int(0.35 * 640 * (1 - self.renderer.smooth_factor))  # First time
         left_elbow_y = int(0.4 * 480 * (1 - self.renderer.smooth_factor))
         self.assertAlmostEqual(self.renderer.last_left_elbow[0], left_elbow_x, delta=5)
         self.assertAlmostEqual(self.renderer.last_left_elbow[1], left_elbow_y, delta=5)
 
     def test_transition_to_neutral_position(self):
-        """Test przechodzenia z wykrytej pozycji do neutralnej."""
-        # Najpierw ustawiamy pozycje rąk z danymi
+        """Test transitioning from detected position to neutral position."""
+        # First set arm positions with data
         hands_data = {
             "hands_data": {
                 "left_hand": {
@@ -117,53 +117,53 @@ class TestHandTracking(unittest.TestCase):
             }
         }
 
-        # Aktualizujemy pozycje rąk
+        # Update arm positions
         self.renderer._update_arm_positions(hands_data)
 
-        # Zapisujemy pozycje
+        # Save positions
         left_elbow_with_data = self.renderer.last_left_elbow
         left_wrist_with_data = self.renderer.last_left_wrist
 
-        # Ustawiamy czas widoczności na dawny, aby symulować utratę śledzenia
+        # Set visibility time to old to simulate tracking loss
         self.renderer.left_arm_visibility_time = time.time() - 1.0
         self.renderer.left_arm_visible = False
 
-        # Aktualizujemy bez danych o lewej ręce
+        # Update without left hand data
         self.renderer._update_arm_positions({"hands_data": {"left_hand": None, "right_hand": None}})
 
-        # Sprawdzamy czy pozycje zmieniły się w stronę neutralnych
+        # Check if positions changed toward neutral
         self.assertIsNotNone(self.renderer.last_left_elbow)
         self.assertIsNotNone(self.renderer.last_left_wrist)
 
-        # Pozycje powinny być inne niż wcześniej (przesunięte w stronę neutralnych)
-        # Dokładne wartości zależą od timera animacji, więc nie sprawdzamy ich bezpośrednio
+        # Positions should be different than before (moved toward neutral)
+        # Exact values depend on animation timer, so we don't check them directly
         self.assertNotEqual(self.renderer.last_left_elbow, left_elbow_with_data)
         self.assertNotEqual(self.renderer.last_left_wrist, left_wrist_with_data)
 
     def test_render_arms(self):
-        """Test renderowania rąk na obrazie."""
-        # Ustawiamy pozycje rąk
+        """Test rendering arms on image."""
+        # Set arm positions
         self.renderer.last_left_elbow = (150, 150)
         self.renderer.last_right_elbow = (350, 150)
         self.renderer.last_left_wrist = (100, 200)
         self.renderer.last_right_wrist = (400, 200)
 
-        # Renderujemy obraz
+        # Render image
         canvas = self.renderer.render()
 
-        # Sprawdzamy wymiary
+        # Check dimensions
         self.assertEqual(canvas.shape, (480, 640, 3))
 
-        # Sprawdzamy czy obraz nie jest pusty (w pełni biały)
+        # Check if image is not empty (completely white)
         self.assertFalse(np.array_equal(canvas, np.ones((480, 640, 3), dtype=np.uint8) * 255))
 
     def test_smooth_transition(self):
-        """Test płynnego przejścia między różnymi pozycjami rąk."""
-        # Ustawiamy początkową pozycję
+        """Test smooth transition between different arm positions."""
+        # Set initial position
         self.renderer.last_left_elbow = (150, 150)
         self.renderer.last_left_wrist = (100, 200)
 
-        # Tworzymy nowe dane z innymi pozycjami
+        # Create new data with different positions
         hands_data = {
             "hands_data": {
                 "left_hand": {
@@ -174,7 +174,7 @@ class TestHandTracking(unittest.TestCase):
             }
         }
 
-        # Wykonujemy kilka aktualizacji, aby zobaczyć płynne przejście
+        # Perform several updates to observe smooth transition
         positions = []
         for _ in range(5):
             self.renderer._update_arm_positions(hands_data)
@@ -187,15 +187,15 @@ class TestHandTracking(unittest.TestCase):
                 )
             )
 
-        # Sprawdzamy czy pozycje zmieniają się stopniowo
+        # Check if positions change gradually
         for i in range(1, len(positions)):
-            # Różnica między kolejnymi pozycjami nie powinna być zbyt duża
+            # Difference between consecutive positions shouldn't be too large
             self.assertLess(abs(positions[i][0] - positions[i - 1][0]), 50)
             self.assertLess(abs(positions[i][1] - positions[i - 1][1]), 50)
             self.assertLess(abs(positions[i][2] - positions[i - 1][2]), 50)
             self.assertLess(abs(positions[i][3] - positions[i - 1][3]), 50)
 
-        # Pozycja końcowa powinna różnić się od początkowej
+        # Final position should differ from initial
         self.assertNotEqual(self.renderer.last_left_elbow, (150, 150))
         self.assertNotEqual(self.renderer.last_left_wrist, (100, 200))
 

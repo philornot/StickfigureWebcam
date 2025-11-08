@@ -2,5 +2,5 @@
 # -*- coding: utf-8 -*-
 
 """
-Testy dla modułu pose, odpowiedzialnego za detekcję i analizę pozy użytkownika.
+Tests for the pose module, responsible for detecting and analyzing the user's position.
 """

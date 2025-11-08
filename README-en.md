@@ -11,7 +11,7 @@
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat)](https://pycqa.github.io/isort/)
 [![Static typing: mypy](https://img.shields.io/badge/static%20typing-mypy-blue)](http://mypy-lang.org/)
 
-<img src="stick-figure-animated.svg" width="250" height="250" alt="Stick Figure Animation">
+<img src="creepy_stick-figure-animated.svg" width="250" height="250" alt="Stick Figure Animation">
 
 _**Be a stick figure in your next video conference!**_
 

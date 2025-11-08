@@ -2,5 +2,5 @@
 # -*- coding: utf-8 -*-
 
 """
-Pakiet testów jednostkowych dla Stick Figure Webcam.
+Unit test suite for Stick Figure Webcam.
 """
