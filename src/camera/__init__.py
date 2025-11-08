@@ -2,6 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from src.camera.camera_capture import CameraCapture
-from src.camera.virtual_camera import VirtualCamera
+from src.camera.simple_virtual_camera import SimpleVirtualCamera
 
-__all__ = ['CameraCapture', 'VirtualCamera']
+__all__ = ['CameraCapture', 'SimpleVirtualCamera']
