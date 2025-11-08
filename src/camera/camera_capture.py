@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Camera capture module for webcam access and frame processing.
+
+This module provides the CameraCapture class for interfacing with webcams,
+configuring camera settings, capturing frames, and basic image operations.
+"""
 
 import time
 from typing import Tuple, Dict, Optional, Any, List
@@ -12,29 +17,46 @@ from src.utils.performance import PerformanceMonitor
 
 
 class CameraCapture:
-    """
-    Klasa do przechwytywania obrazu z kamery internetowej.
-    Zapewnia interfejs do konfiguracji kamery, przechwytywania klatek
-    i podstawowych operacji na obrazie.
+    """Handles webcam capture with configuration and frame operations.
+
+    Provides interface for camera configuration, frame capture, and basic
+    image operations like flipping and brightness adjustment.
+
+    Attributes:
+        camera_id: Camera device identifier
+        width: Preferred frame width in pixels
+        height: Preferred frame height in pixels
+        fps: Target frames per second
+        logger: Logger instance for diagnostics
+        cap: OpenCV VideoCapture object
+        is_open: Whether camera is currently open
+        frame_count: Total frames captured
+        last_frame: Most recently captured frame
+        camera_info: Dictionary of camera parameters
+
+    Example:
+        >>> camera = CameraCapture(camera_id=0, width=640, height=480)
+        >>> success, frame = camera.read()
+        >>> if success:
+        ...     processed = camera.flip_horizontal(frame)
     """
 
     def __init__(
-            self,
-            camera_id: int = 0,
-            width: int = 640,
-            height: int = 480,
-            fps: int = 30,
-            logger: Optional[CustomLogger] = None
+        self,
+        camera_id: int = 0,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 30,
+        logger: Optional[CustomLogger] = None
     ):
-        """
-        Inicjalizacja modułu przechwytywania kamery.
+        """Initialize camera capture module.
 
         Args:
-            camera_id (int): Identyfikator kamery (zwykle 0 dla domyślnej kamery)
-            width (int): Preferowana szerokość obrazu
-            height (int): Preferowana wysokość obrazu
-            fps (int): Preferowana liczba klatek na sekundę
-            logger (CustomLogger, optional): Logger do zapisywania komunikatów
+            camera_id: Camera device ID (usually 0 for default camera)
+            width: Preferred frame width in pixels
+            height: Preferred frame height in pixels
+            fps: Target frames per second
+            logger: Optional logger for diagnostics
         """
         self.camera_id = camera_id
         self.width = width
@@ -49,7 +71,7 @@ class CameraCapture:
         self.last_frame_time = 0
         self.performance = PerformanceMonitor("CameraCapture")
 
-        # Informacje o kamerze
+        # Camera information dictionary
         self.camera_info = {
             "id": camera_id,
             "name": "Unknown",
@@ -58,37 +80,36 @@ class CameraCapture:
             "real_fps": 0.0
         }
 
-        # Automatyczne otwieranie kamery przy inicjalizacji
+        # Automatically open camera on initialization
         self.open()
 
     def open(self) -> bool:
-        """
-        Otwiera połączenie z kamerą i konfiguruje parametry.
+        """Open camera connection and configure parameters.
 
         Returns:
-            bool: True jeśli udało się otworzyć kamerę, False w przeciwnym razie
+            True if camera opened successfully, False otherwise
         """
         try:
-            self.logger.debug("CameraCapture", f"Próba otwarcia kamery ID: {self.camera_id}", log_type="CAMERA")
+            self.logger.debug("CameraCapture", f"Attempting to open camera ID: {self.camera_id}", log_type="CAMERA")
             self.cap = cv2.VideoCapture(self.camera_id)
 
             if not self.cap.isOpened():
-                self.logger.error("CameraCapture", f"Nie udało się otworzyć kamery ID: {self.camera_id}",
+                self.logger.error("CameraCapture", f"Failed to open camera ID: {self.camera_id}",
                                   log_type="CAMERA")
                 self.is_open = False
                 return False
 
-            # Konfiguracja parametrów kamery
+            # Configure camera parameters
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self.cap.set(cv2.CAP_PROP_FPS, self.fps)
 
-            # Odczytanie rzeczywistych parametrów
+            # Read actual parameters
             real_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             real_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             real_fps = self.cap.get(cv2.CAP_PROP_FPS)
 
-            # Aktualizacja informacji o kamerze
+            # Update camera information
             self.camera_info.update({
                 "resolution": (real_width, real_height),
                 "fps": real_fps,
@@ -100,15 +121,15 @@ class CameraCapture:
 
             self.logger.info(
                 "CameraCapture",
-                f"Kamera otwarta: {self.width}x{self.height} @ {real_fps:.1f} FPS",
+                f"Camera opened: {self.width}x{self.height} @ {real_fps:.1f} FPS",
                 log_type="CAMERA",
                 camera_info=self.camera_info
             )
 
-            # Powiadomienie loggera o statusie kamery
+            # Notify logger of camera status
             self.logger.camera_status(True, self.camera_info)
 
-            # Inicjalizacja pierwszej klatki
+            # Initialize first frame
             ret, frame = self.cap.read()
             if ret:
                 self.last_frame = frame
@@ -122,7 +143,7 @@ class CameraCapture:
             error_info = {"error": str(e)}
             self.logger.critical(
                 "CameraCapture",
-                f"Błąd podczas otwierania kamery: {str(e)}",
+                f"Error opening camera: {str(e)}",
                 log_type="CAMERA",
                 error=error_info
             )
@@ -130,16 +151,15 @@ class CameraCapture:
             return False
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
-        """
-        Odczytuje klatkę z kamery.
+        """Read frame from camera.
 
         Returns:
-            Tuple[bool, Optional[np.ndarray]]:
-                - bool: True jeśli udało się odczytać klatkę
-                - np.ndarray: Klatka jako tablica NumPy lub None w przypadku błędu
+            Tuple containing:
+                - bool: True if frame read successfully
+                - Optional[np.ndarray]: Frame as NumPy array or None on error
         """
         if not self.is_open or self.cap is None:
-            self.logger.warning("CameraCapture", "Próba odczytu z nieotwartej kamery", log_type="CAMERA")
+            self.logger.warning("CameraCapture", "Attempting to read from closed camera", log_type="CAMERA")
             return False, None
 
         self.performance.start_timer()
@@ -153,8 +173,8 @@ class CameraCapture:
                 elapsed = current_time - self.last_frame_time
 
                 if elapsed > 0:
-                    # Aktualizacja rzeczywistego FPS (wygładzanie wykładnicze)
-                    alpha = 0.3  # Współczynnik wygładzania
+                    # Update real FPS with exponential smoothing
+                    alpha = 0.3  # Smoothing coefficient
                     current_fps = 1.0 / elapsed
                     if self.camera_info["real_fps"] == 0:
                         self.camera_info["real_fps"] = current_fps
@@ -164,18 +184,18 @@ class CameraCapture:
                 self.last_frame = frame
                 self.last_frame_time = current_time
 
-                # Co 100 klatek logujemy statystyki wydajności
+                # Log statistics every 100 frames
                 if self.frame_count % 100 == 0:
                     self.logger.debug(
                         "CameraCapture",
-                        f"Odczytano {self.frame_count} klatek, aktualny FPS: {self.camera_info['real_fps']:.1f}",
+                        f"Read {self.frame_count} frames, current FPS: {self.camera_info['real_fps']:.1f}",
                         log_type="CAMERA"
                     )
 
                 self.performance.stop_timer()
                 processing_time = self.performance.get_last_execution_time() * 1000  # ms
 
-                # Co 500 klatek logujemy informacje o wydajności
+                # Log performance every 500 frames
                 if self.frame_count % 500 == 0:
                     self.logger.performance_metrics(
                         self.camera_info["real_fps"],
@@ -187,7 +207,7 @@ class CameraCapture:
             else:
                 self.logger.warning(
                     "CameraCapture",
-                    "Nie udało się odczytać klatki z kamery",
+                    "Failed to read frame from camera",
                     log_type="CAMERA"
                 )
                 return False, None
@@ -195,49 +215,46 @@ class CameraCapture:
         except Exception as e:
             self.logger.error(
                 "CameraCapture",
-                f"Błąd podczas odczytu z kamery: {str(e)}",
+                f"Error reading from camera: {str(e)}",
                 log_type="CAMERA",
                 error={"error": str(e)}
             )
             return False, None
 
     def get_latest_frame(self) -> np.ndarray:
-        """
-        Zwraca ostatnią pomyślnie odczytaną klatkę.
+        """Return most recently captured frame.
 
         Returns:
-            np.ndarray: Ostatnia klatka lub pusta klatka jeśli nie ma dostępnych
+            Last successfully captured frame, or black frame if none available
         """
         if self.last_frame is not None:
             return self.last_frame.copy()
         else:
-            # Zwróć pustą (czarną) klatkę
+            # Return empty (black) frame
             return np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
     def get_camera_info(self) -> Dict[str, Any]:
-        """
-        Zwraca informacje o kamerze.
+        """Get camera information.
 
         Returns:
-            Dict[str, Any]: Słownik z informacjami o kamerze
+            Dictionary containing camera parameters
         """
         return self.camera_info.copy()
 
     def set_resolution(self, width: int, height: int) -> bool:
-        """
-        Ustawia rozdzielczość kamery.
+        """Set camera resolution.
 
         Args:
-            width (int): Nowa szerokość
-            height (int): Nowa wysokość
+            width: New width in pixels
+            height: New height in pixels
 
         Returns:
-            bool: True jeśli udało się zmienić rozdzielczość
+            True if resolution changed successfully
         """
         if not self.is_open or self.cap is None:
             self.logger.warning(
                 "CameraCapture",
-                "Próba zmiany rozdzielczości nieotwartej kamery",
+                "Attempting to change resolution on closed camera",
                 log_type="CAMERA"
             )
             return False
@@ -245,14 +262,14 @@ class CameraCapture:
         try:
             self.logger.debug(
                 "CameraCapture",
-                f"Zmiana rozdzielczości na {width}x{height}",
+                f"Changing resolution to {width}x{height}",
                 log_type="CAMERA"
             )
 
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-            # Sprawdzenie czy udało się zmienić rozdzielczość
+            # Check if resolution actually changed
             real_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             real_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
@@ -261,17 +278,17 @@ class CameraCapture:
 
             self.logger.info(
                 "CameraCapture",
-                f"Nowa rozdzielczość: {real_width}x{real_height}",
+                f"New resolution: {real_width}x{real_height}",
                 log_type="CAMERA",
                 camera_info=self.camera_info
             )
 
-            # Jeśli rozmiary się różnią, ostrzeżenie
+            # Warn if dimensions differ from requested
             if real_width != width or real_height != height:
                 self.logger.warning(
                     "CameraCapture",
-                    f"Żądana rozdzielczość {width}x{height} nie jest obsługiwana. "
-                    f"Ustawiono najbliższą dostępną: {real_width}x{real_height}",
+                    f"Requested resolution {width}x{height} not supported. "
+                    f"Using closest available: {real_width}x{real_height}",
                     log_type="CAMERA"
                 )
 
@@ -280,51 +297,50 @@ class CameraCapture:
         except Exception as e:
             self.logger.error(
                 "CameraCapture",
-                f"Błąd podczas zmiany rozdzielczości: {str(e)}",
+                f"Error changing resolution: {str(e)}",
                 log_type="CAMERA",
                 error={"error": str(e)}
             )
             return False
 
     def set_fps(self, fps: int) -> bool:
-        """
-        Ustawia docelową liczbę klatek na sekundę.
+        """Set target frames per second.
 
         Args:
-            fps (int): Nowa wartość FPS
+            fps: New FPS value
 
         Returns:
-            bool: True jeśli udało się zmienić FPS
+            True if FPS changed successfully
         """
         if not self.is_open or self.cap is None:
             self.logger.warning(
                 "CameraCapture",
-                "Próba zmiany FPS nieotwartej kamery",
+                "Attempting to change FPS on closed camera",
                 log_type="CAMERA"
             )
             return False
 
         try:
-            self.logger.debug("CameraCapture", f"Zmiana FPS na {fps}", log_type="CAMERA")
+            self.logger.debug("CameraCapture", f"Changing FPS to {fps}", log_type="CAMERA")
 
             self.cap.set(cv2.CAP_PROP_FPS, fps)
 
-            # Sprawdzenie rzeczywistego FPS
+            # Check actual FPS
             real_fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.fps = real_fps
             self.camera_info["fps"] = real_fps
 
             self.logger.info(
                 "CameraCapture",
-                f"Nowy FPS: {real_fps:.1f}",
+                f"New FPS: {real_fps:.1f}",
                 log_type="CAMERA"
             )
 
             if abs(real_fps - fps) > 0.1:
                 self.logger.warning(
                     "CameraCapture",
-                    f"Żądany FPS {fps} nie jest obsługiwany. "
-                    f"Ustawiono najbliższą dostępną wartość: {real_fps:.1f}",
+                    f"Requested FPS {fps} not supported. "
+                    f"Using closest available: {real_fps:.1f}",
                     log_type="CAMERA"
                 )
 
@@ -333,23 +349,22 @@ class CameraCapture:
         except Exception as e:
             self.logger.error(
                 "CameraCapture",
-                f"Błąd podczas zmiany FPS: {str(e)}",
+                f"Error changing FPS: {str(e)}",
                 log_type="CAMERA",
                 error={"error": str(e)}
             )
             return False
 
     def list_available_cameras(self) -> List[Dict[str, Any]]:
-        """
-        Wykrywa dostępne kamery w systemie.
+        """Detect available cameras on system.
 
         Returns:
-            List[Dict[str, Any]]: Lista słowników z informacjami o dostępnych kamerach
+            List of dictionaries with information about available cameras
         """
         available_cameras = []
-        max_cameras = 10  # Ograniczenie do 10 kamer
+        max_cameras = 10  # Limit to 10 cameras
 
-        self.logger.debug("CameraCapture", "Wyszukiwanie dostępnych kamer...", log_type="CAMERA")
+        self.logger.debug("CameraCapture", "Searching for available cameras...", log_type="CAMERA")
 
         for i in range(max_cameras):
             try:
@@ -365,13 +380,13 @@ class CameraCapture:
                         "backend": cap.getBackendName()
                     }
 
-                    # Pobierz jedną klatkę do weryfikacji
+                    # Capture one frame for verification
                     ret, _ = cap.read()
                     if ret:
                         available_cameras.append(camera_info)
                         self.logger.debug(
                             "CameraCapture",
-                            f"Znaleziono kamerę ID: {i} - {camera_info['resolution']} @ {camera_info['fps']} FPS",
+                            f"Found camera ID: {i} - {camera_info['resolution']} @ {camera_info['fps']} FPS",
                             log_type="CAMERA"
                         )
 
@@ -380,13 +395,13 @@ class CameraCapture:
             except Exception as e:
                 self.logger.trace(
                     "CameraCapture",
-                    f"Błąd podczas sprawdzania kamery ID: {i}: {str(e)}",
+                    f"Error checking camera ID: {i}: {str(e)}",
                     log_type="CAMERA"
                 )
 
         self.logger.info(
             "CameraCapture",
-            f"Znaleziono {len(available_cameras)} dostępnych kamer",
+            f"Found {len(available_cameras)} available cameras",
             log_type="CAMERA",
             cameras=available_cameras
         )
@@ -394,53 +409,47 @@ class CameraCapture:
         return available_cameras
 
     def flip_horizontal(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Odbija klatkę w poziomie.
+        """Flip frame horizontally.
 
         Args:
-            frame (np.ndarray): Klatka wejściowa
+            frame: Input frame
 
         Returns:
-            np.ndarray: Odbita klatka
+            Horizontally flipped frame
         """
         return cv2.flip(frame, 1)
 
     def adjust_brightness_contrast(
-            self,
-            frame: np.ndarray,
-            brightness: float = 0,
-            contrast: float = 1.0
+        self,
+        frame: np.ndarray,
+        brightness: float = 0,
+        contrast: float = 1.0
     ) -> np.ndarray:
-        """
-        Dostosowuje jasność i kontrast klatki.
+        """Adjust frame brightness and contrast.
 
         Args:
-            frame (np.ndarray): Klatka wejściowa
-            brightness (float): Wartość jasności (-1.0 do 1.0)
-            contrast (float): Wartość kontrastu (0.0 do 3.0)
+            frame: Input frame
+            brightness: Brightness adjustment (-1.0 to 1.0)
+            contrast: Contrast multiplier (0.0 to 3.0)
 
         Returns:
-            np.ndarray: Przetworzona klatka
+            Adjusted frame
         """
-        # Konwersja jasności z zakresu -1.0:1.0 do wartości przesunięcia pikseli
+        # Convert brightness from range -1.0:1.0 to pixel offset value
         brightness_value = int(brightness * 255)
 
-        # Zastosowanie kontrastu i jasności
+        # Apply contrast and brightness
         adjusted = cv2.convertScaleAbs(frame, alpha=contrast, beta=brightness_value)
 
         return adjusted
 
     def close(self) -> None:
-        """
-        Zamyka połączenie z kamerą.
-        """
+        """Close camera connection."""
         if self.is_open and self.cap is not None:
             self.cap.release()
             self.is_open = False
-            self.logger.info("CameraCapture", "Kamera zamknięta", log_type="CAMERA")
+            self.logger.info("CameraCapture", "Camera closed", log_type="CAMERA")
 
     def __del__(self):
-        """
-        Destruktor klasy, zapewniający zamknięcie kamery.
-        """
+        """Destructor ensuring camera is closed."""
         self.close()

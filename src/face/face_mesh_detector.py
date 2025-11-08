@@ -1,723 +1,455 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# src/face/face_mesh_detector.py
+"""Camera capture module for webcam access and frame processing.
 
-from typing import Dict, List, Tuple, Optional, Any
+This module provides the CameraCapture class for interfacing with webcams,
+configuring camera settings, capturing frames, and basic image operations.
+"""
+
+import time
+from typing import Tuple, Dict, Optional, Any, List
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
 from src.utils.custom_logger import CustomLogger
 from src.utils.performance import PerformanceMonitor
 
 
-class FaceMeshDetector:
+class CameraCapture:
+    """Handles webcam capture with configuration and frame operations.
+
+    Provides interface for camera configuration, frame capture, and basic
+    image operations like flipping and brightness adjustment.
+
+    Attributes:
+        camera_id: Camera device identifier
+        width: Preferred frame width in pixels
+        height: Preferred frame height in pixels
+        fps: Target frames per second
+        logger: Logger instance for diagnostics
+        cap: OpenCV VideoCapture object
+        is_open: Whether camera is currently open
+        frame_count: Total frames captured
+        last_frame: Most recently captured frame
+        camera_info: Dictionary of camera parameters
+
+    Example:
+        >>> camera = CameraCapture(camera_id=0, width=640, height=480)
+        >>> success, frame = camera.read()
+        >>> if success:
+        ...     processed = camera.flip_horizontal(frame)
     """
-    Klasa do wykrywania twarzy i jej szczegółowych punktów charakterystycznych
-    przy użyciu MediaPipe FaceMesh.
-
-    Wykrywa 468 punktów charakterystycznych twarzy i dostarcza ich współrzędne
-    dla renderowania bardziej szczegółowych i ekspresyjnych twarzy.
-    """
-
-    # Indeksy ważnych punktów twarzy
-    # Krawędź twarzy (owal)
-    FACE_OVAL = [
-        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
-        397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
-        172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109
-    ]
-
-    # Brwi
-    LEFT_EYEBROW = [336, 296, 334, 293, 300, 276, 283, 282, 295, 285]
-    RIGHT_EYEBROW = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
-
-    # Oczy
-    LEFT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
-    RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-
-    # Źrenice (przybliżone punkty)
-    LEFT_PUPIL = 468  # W niektórych wersjach MediaPipe są dodatkowe punkty dla źrenic
-    RIGHT_PUPIL = 473
-
-    # Usta (zewnętrzna i wewnętrzna krawędź)
-    LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
-    LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
-
-    # Dodatkowe punkty ust pomocne przy detekcji uśmiechu
-    # Górna warga (środek)
-    UPPER_LIP_CENTER = 13
-    # Dolna warga (środek)
-    LOWER_LIP_CENTER = 14
-    # Kąciki ust
-    LEFT_MOUTH_CORNER = 61
-    RIGHT_MOUTH_CORNER = 291
-
-    # Nos
-    NOSE_TIP = 1
-    NOSE_BOTTOM = 2
-    NOSE_BRIDGE = [6, 197, 195, 5]
-
-    # Policzki
-    LEFT_CHEEK = 425
-    RIGHT_CHEEK = 205
 
     def __init__(
         self,
-        max_num_faces: int = 1,
-        min_detection_confidence: float = 0.5,
-        min_tracking_confidence: float = 0.5,
-        refine_landmarks: bool = True,
+        camera_id: int = 0,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 30,
         logger: Optional[CustomLogger] = None
     ):
-        """
-        Inicjalizacja detektora twarzy FaceMesh.
+        """Initialize camera capture module.
 
         Args:
-            max_num_faces (int): Maksymalna liczba twarzy do wykrywania (domyślnie 1)
-            min_detection_confidence (float): Minimalna pewność detekcji (0.0-1.0)
-            min_tracking_confidence (float): Minimalna pewność śledzenia (0.0-1.0)
-            refine_landmarks (bool): Czy używać udoskonalonego modelu dla okolic oczu i ust
-            logger (CustomLogger, optional): Logger do zapisywania komunikatów
+            camera_id: Camera device ID (usually 0 for default camera)
+            width: Preferred frame width in pixels
+            height: Preferred frame height in pixels
+            fps: Target frames per second
+            logger: Optional logger for diagnostics
         """
+        self.camera_id = camera_id
+        self.width = width
+        self.height = height
+        self.fps = fps
         self.logger = logger or CustomLogger()
-        self.performance = PerformanceMonitor("FaceMeshDetector")
 
-        # Parametry detekcji
-        self.max_num_faces = max_num_faces
-        self.min_detection_confidence = min_detection_confidence
-        self.min_tracking_confidence = min_tracking_confidence
-        self.refine_landmarks = refine_landmarks
-
-        # Statystyki detekcji
+        self.cap = None
+        self.is_open = False
         self.frame_count = 0
-        self.detection_count = 0
-        self.last_detection_score = 0.0
-        self.last_face_data = None
+        self.last_frame = None
+        self.last_frame_time = 0
+        self.performance = PerformanceMonitor("CameraCapture")
 
-        # Inicjalizacja MediaPipe FaceMesh
-        self.logger.debug(
-            "FaceMeshDetector",
-            f"Inicjalizacja MediaPipe FaceMesh (max_faces={max_num_faces}, refine_landmarks={refine_landmarks})",
-            log_type="FACE"
-        )
+        # Camera information dictionary
+        self.camera_info = {
+            "id": camera_id,
+            "name": "Unknown",
+            "resolution": (width, height),
+            "fps": fps,
+            "real_fps": 0.0
+        }
 
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_drawing_styles = mp.solutions.drawing_styles
-        self.mp_face_mesh = mp.solutions.face_mesh
+        # Automatically open camera on initialization
+        self.open()
 
-        # Inicjalizacja detektora twarzy
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=max_num_faces,
-            refine_landmarks=refine_landmarks,
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence
-        )
-
-        # Styl rysowania siatki twarzy
-        self.face_mesh_drawing_spec = self.mp_drawing.DrawingSpec(
-            color=(0, 255, 0),  # BGR: zielony
-            thickness=1,
-            circle_radius=1
-        )
-        self.face_connections_drawing_spec = self.mp_drawing.DrawingSpec(
-            color=(255, 0, 0),  # BGR: niebieski
-            thickness=1
-        )
-
-        self.logger.info(
-            "FaceMeshDetector",
-            "MediaPipe FaceMesh zainicjalizowany pomyślnie",
-            log_type="FACE"
-        )
-
-    def detect_face(self, image: np.ndarray) -> Tuple[bool, Dict[str, Any]]:
-        """
-        Wykrywa twarz i punkty charakterystyczne na obrazie.
-
-        Args:
-            image (np.ndarray): Obraz wejściowy w formacie BGR (OpenCV)
+    def open(self) -> bool:
+        """Open camera connection and configure parameters.
 
         Returns:
-            Tuple[bool, Dict[str, Any]]:
-                - bool: True jeśli wykryto twarz, False w przeciwnym razie
-                - Dict: Słownik zawierający informacje o wykrytej twarzy
+            True if camera opened successfully, False otherwise
         """
-        self.performance.start_timer()
-        self.frame_count += 1
-
-        # MediaPipe wymaga obrazu w formacie RGB
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        h, w, _ = image.shape
-
-        # Detekcja twarzy
         try:
-            results = self.face_mesh.process(image_rgb)
+            self.logger.debug("CameraCapture", f"Attempting to open camera ID: {self.camera_id}", log_type="CAMERA")
+            self.cap = cv2.VideoCapture(self.camera_id)
 
-            # Przygotowanie wyników
-            face_data = {
-                "landmarks": None,
-                "multi_face_landmarks": None,
-                "detection_score": 0.0,
-                "has_face": False,
-                "frame_height": h,
-                "frame_width": w,
-                "expressions": {
-                    "mouth_open": 0.0,
-                    "smile": 0.0,
-                    "left_eye_open": 1.0,
-                    "right_eye_open": 1.0,
-                    "eyebrow_raised": 0.0,
-                    "surprise": 0.0
-                },
-                "debug_info": {}  # Dodane pole do debugowania
-            }
+            if not self.cap.isOpened():
+                self.logger.error("CameraCapture", f"Failed to open camera ID: {self.camera_id}",
+                                  log_type="CAMERA")
+                self.is_open = False
+                return False
 
-            # Sprawdzenie czy twarz została wykryta
-            if results.multi_face_landmarks:
-                # Twarz wykryta
-                self.detection_count += 1
-                face_data["has_face"] = True
-                face_data["multi_face_landmarks"] = results.multi_face_landmarks
+            # Configure camera parameters
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self.cap.set(cv2.CAP_PROP_FPS, self.fps)
 
-                # Jeśli wykryto wiele twarzy, bierzemy tylko pierwszą
-                face_landmarks = results.multi_face_landmarks[0]
+            # Read actual parameters
+            real_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            real_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            real_fps = self.cap.get(cv2.CAP_PROP_FPS)
 
-                # Konwersja punktów charakterystycznych na listę krotek (x, y, z, visibility)
-                # Uwaga: MediaPipe FaceMesh nie dostarcza visibility, używamy wartości 1.0
-                landmarks = []
-                for landmark in face_landmarks.landmark:
-                    landmarks.append((landmark.x, landmark.y, landmark.z, 1.0))
+            # Update camera information
+            self.camera_info.update({
+                "resolution": (real_width, real_height),
+                "fps": real_fps,
+                "backend": self.cap.getBackendName()
+            })
 
-                face_data["landmarks"] = landmarks
+            self.width, self.height = real_width, real_height
+            self.is_open = True
 
-                # Analizujemy wyraz twarzy
-                face_data["expressions"] = self._analyze_expressions(landmarks, w, h)
+            self.logger.info(
+                "CameraCapture",
+                f"Camera opened: {self.width}x{self.height} @ {real_fps:.1f} FPS",
+                log_type="CAMERA",
+                camera_info=self.camera_info
+            )
 
-                # Szacowanie pewności detekcji - MediaPipe FaceMesh nie zwraca score,
-                # więc używamy stałej wartości dla wykrytej twarzy
-                face_data["detection_score"] = 1.0
-                self.last_detection_score = 1.0
-                self.last_face_data = face_data
+            # Notify logger of camera status
+            self.logger.camera_status(True, self.camera_info)
 
-                # Logowanie co 30 klatek
-                if self.frame_count % 30 == 0:
-                    self.logger.debug(
-                        "FaceMeshDetector",
-                        f"Wykryto twarz, ekspresje: {face_data['expressions']}",
-                        log_type="FACE"
-                    )
+            # Initialize first frame
+            ret, frame = self.cap.read()
+            if ret:
+                self.last_frame = frame
+                self.last_frame_time = time.time()
+                self.frame_count = 1
 
-                # Monitorowanie wydajności
-                self.performance.stop_timer()
-                execution_time = self.performance.get_last_execution_time() * 1000  # ms
-
-                # Statystyki wydajności co 100 detekcji
-                if self.detection_count % 100 == 0:
-                    self.logger.info(
-                        "FaceMeshDetector",
-                        f"Wykryto {self.detection_count} twarzy, "
-                        f"stosunek detekcji: {self.detection_count / self.frame_count:.2f}",
-                        log_type="FACE"
-                    )
-                    self.logger.performance_metrics(0, execution_time, "FaceMeshDetector")
-
-                return True, face_data
-            else:
-                # Brak detekcji twarzy
-                self.performance.stop_timer()
-
-                # Jeśli mamy ostatnią wykrytą twarz, używamy jej z obniżoną pewnością
-                if self.last_face_data is not None:
-                    # Kopiujemy ostatnie dane, ale obniżamy pewność
-                    face_data = self.last_face_data.copy()
-                    face_data["detection_score"] *= 0.8  # Obniżamy pewność
-                    face_data["has_face"] = face_data["detection_score"] > 0.5
-
-                    # Logowanie co 50 klatek bez świeżej detekcji
-                    if self.frame_count % 50 == 0:
-                        self.logger.debug(
-                            "FaceMeshDetector",
-                            "Używam ostatniej wykrytej twarzy z obniżoną pewnością",
-                            log_type="FACE"
-                        )
-
-                    return face_data["has_face"], face_data
-
-                # Logowanie braku detekcji co 50 klatek bez detekcji
-                if self.frame_count % 50 == 0 and self.detection_count == 0:
-                    self.logger.warning(
-                        "FaceMeshDetector",
-                        "Nie wykryto twarzy w ostatnich 50 klatkach",
-                        log_type="FACE"
-                    )
-                elif self.frame_count % 100 == 0:
-                    self.logger.debug(
-                        "FaceMeshDetector",
-                        f"Brak detekcji twarzy, stosunek detekcji: {self.detection_count / self.frame_count:.2f}",
-                        log_type="FACE"
-                    )
-
-                return False, face_data
+            return True
 
         except Exception as e:
-            self.performance.stop_timer()
+            self.is_open = False
+            error_info = {"error": str(e)}
+            self.logger.critical(
+                "CameraCapture",
+                f"Error opening camera: {str(e)}",
+                log_type="CAMERA",
+                error=error_info
+            )
+            self.logger.camera_status(False, error_info)
+            return False
+
+    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Read frame from camera.
+
+        Returns:
+            Tuple containing:
+                - bool: True if frame read successfully
+                - Optional[np.ndarray]: Frame as NumPy array or None on error
+        """
+        if not self.is_open or self.cap is None:
+            self.logger.warning("CameraCapture", "Attempting to read from closed camera", log_type="CAMERA")
+            return False, None
+
+        self.performance.start_timer()
+
+        try:
+            ret, frame = self.cap.read()
+
+            if ret:
+                self.frame_count += 1
+                current_time = time.time()
+                elapsed = current_time - self.last_frame_time
+
+                if elapsed > 0:
+                    # Update real FPS with exponential smoothing
+                    alpha = 0.3  # Smoothing coefficient
+                    current_fps = 1.0 / elapsed
+                    if self.camera_info["real_fps"] == 0:
+                        self.camera_info["real_fps"] = current_fps
+                    else:
+                        self.camera_info["real_fps"] = (1 - alpha) * self.camera_info["real_fps"] + alpha * current_fps
+
+                self.last_frame = frame
+                self.last_frame_time = current_time
+
+                # Log statistics every 100 frames
+                if self.frame_count % 100 == 0:
+                    self.logger.debug(
+                        "CameraCapture",
+                        f"Read {self.frame_count} frames, current FPS: {self.camera_info['real_fps']:.1f}",
+                        log_type="CAMERA"
+                    )
+
+                self.performance.stop_timer()
+                processing_time = self.performance.get_last_execution_time() * 1000  # ms
+
+                # Log performance every 500 frames
+                if self.frame_count % 500 == 0:
+                    self.logger.performance_metrics(
+                        self.camera_info["real_fps"],
+                        processing_time,
+                        "CameraCapture"
+                    )
+
+                return True, frame
+            else:
+                self.logger.warning(
+                    "CameraCapture",
+                    "Failed to read frame from camera",
+                    log_type="CAMERA"
+                )
+                return False, None
+
+        except Exception as e:
             self.logger.error(
-                "FaceMeshDetector",
-                f"Błąd podczas detekcji twarzy: {str(e)}",
-                log_type="FACE",
+                "CameraCapture",
+                f"Error reading from camera: {str(e)}",
+                log_type="CAMERA",
                 error={"error": str(e)}
             )
-            return False, {"error": str(e), "has_face": False}
+            return False, None
 
-    def _analyze_expressions(
-        self,
-        landmarks: List[Tuple[float, float, float, float]],
-        img_width: int,
-        img_height: int
-    ) -> Dict[str, float]:
-        """
-        Analizuje wyraz twarzy na podstawie punktów charakterystycznych.
-
-        Ulepszono detekcję uśmiechu przez analizę kształtu ust i położenia kącików.
-
-        Args:
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów charakterystycznych
-            img_width (int): Szerokość obrazu
-            img_height (int): Wysokość obrazu
+    def get_latest_frame(self) -> np.ndarray:
+        """Return most recently captured frame.
 
         Returns:
-            Dict[str, float]: Słownik z wartościami ekspresji twarzy (0.0-1.0)
+            Last successfully captured frame, or black frame if none available
         """
-        expressions = {
-            "mouth_open": 0.0,
-            "smile": 0.0,
-            "left_eye_open": 1.0,
-            "right_eye_open": 1.0,
-            "eyebrow_raised": 0.0,
-            "surprise": 0.0
-        }
+        if self.last_frame is not None:
+            return self.last_frame.copy()
+        else:
+            # Return empty (black) frame
+            return np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
-        # Słownik z wartościami debug dla analizy
-        debug_values = {}
+    def get_camera_info(self) -> Dict[str, Any]:
+        """Get camera information.
+
+        Returns:
+            Dictionary containing camera parameters
+        """
+        return self.camera_info.copy()
+
+    def set_resolution(self, width: int, height: int) -> bool:
+        """Set camera resolution.
+
+        Args:
+            width: New width in pixels
+            height: New height in pixels
+
+        Returns:
+            True if resolution changed successfully
+        """
+        if not self.is_open or self.cap is None:
+            self.logger.warning(
+                "CameraCapture",
+                "Attempting to change resolution on closed camera",
+                log_type="CAMERA"
+            )
+            return False
 
         try:
-            if not landmarks or len(landmarks) < 468:  # FaceMesh ma 468 punktów
-                return expressions
+            self.logger.debug(
+                "CameraCapture",
+                f"Changing resolution to {width}x{height}",
+                log_type="CAMERA"
+            )
 
-            # Analiza otwarcia ust
-            # Używamy punktów górnej i dolnej wargi do określenia otwarcia ust
-            top_lip = landmarks[self.UPPER_LIP_CENTER]  # Górna warga, środek
-            bottom_lip = landmarks[self.LOWER_LIP_CENTER]  # Dolna warga, środek
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-            # Obliczamy odległość między wargami w pikselach
-            lips_distance = abs(top_lip[1] - bottom_lip[1]) * img_height
+            # Check if resolution actually changed
+            real_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            real_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            # Normalizacja względem rozmiaru twarzy
-            face_height = abs(landmarks[10][1] - landmarks[152][1]) * img_height
-            if face_height > 0:
-                # Przeliczamy na wartość 0.0-1.0, gdzie 0.0 to zamknięte usta, 1.0 to szeroko otwarte
-                mouth_open_ratio = min(1.0, (lips_distance / face_height) * 5.0)
-                expressions["mouth_open"] = mouth_open_ratio
-                debug_values["lips_distance"] = lips_distance
-                debug_values["face_height"] = face_height
-                debug_values["mouth_open_ratio_raw"] = lips_distance / face_height
+            self.width, self.height = real_width, real_height
+            self.camera_info["resolution"] = (real_width, real_height)
 
-            # ===== ULEPSZONY ALGORYTM ANALIZY UŚMIECHU =====
-            # 1. Obliczamy różnicę wysokości między kącikami ust a środkiem górnej wargi
-            left_mouth_corner = landmarks[self.LEFT_MOUTH_CORNER]  # Lewy kącik ust
-            right_mouth_corner = landmarks[self.RIGHT_MOUTH_CORNER]  # Prawy kącik ust
-            center_upper_lip = landmarks[self.UPPER_LIP_CENTER]  # Środek górnej wargi
+            self.logger.info(
+                "CameraCapture",
+                f"New resolution: {real_width}x{real_height}",
+                log_type="CAMERA",
+                camera_info=self.camera_info
+            )
 
-            # Przechowujemy współrzędne Y (gdzie mniejsze Y jest wyżej na ekranie)
-            left_corner_y = left_mouth_corner[1]
-            right_corner_y = right_mouth_corner[1]
-            center_upper_y = center_upper_lip[1]
-
-            # 2. Kluczowa modyfikacja: Obliczamy krzywość ust
-            # Obliczamy o ile kąciki ust są wyżej od środka górnej wargi
-            # Przy uśmiechu kąciki będą wyżej (mniejsze Y) niż środek
-            left_up_diff = center_upper_y - left_corner_y
-            right_up_diff = center_upper_y - right_corner_y
-
-            # Uśmiech jest symetryczny, więc oba kąciki powinny być uniesione
-            corner_diff = (left_up_diff + right_up_diff) / 2.0
-
-            # Wartości dodatnie oznaczają, że kąciki są wyżej niż środek - to uśmiech
-            # Normalizacja i ograniczenie do zakresu 0.0-1.0
-            # Mnożymy przez 4.0 zamiast 2.0 dla zwiększenia czułości
-            smile_ratio = max(0.0, min(1.0, corner_diff * 4.0))
-
-            # 3. Dodatkowy czynnik: badamy szerokość ust
-            # Przy uśmiechu usta są szersze
-            mouth_width = abs(left_mouth_corner[0] - right_mouth_corner[0]) * img_width
-
-            # Normalizujemy względem szerokości twarzy
-            face_width = abs(landmarks[234][0] - landmarks[454][0]) * img_width
-            if face_width > 0:
-                width_ratio = min(1.0, (mouth_width / face_width) * 2.0)
-                # Uwzględniamy szerokość jako dodatkowy czynnik (z mniejszą wagą)
-                smile_ratio = smile_ratio * 0.8 + width_ratio * 0.2
-
-            # Zapisujemy ostateczną wartość
-            expressions["smile"] = smile_ratio
-
-            # Zapisujemy wartości debug do analizy
-            debug_values["left_corner_y"] = left_corner_y
-            debug_values["right_corner_y"] = right_corner_y
-            debug_values["center_upper_y"] = center_upper_y
-            debug_values["corner_diff"] = corner_diff
-            debug_values["mouth_width"] = mouth_width
-            debug_values["face_width"] = face_width
-            debug_values["width_ratio"] = width_ratio if 'width_ratio' in locals() else None
-            debug_values["smile_ratio_final"] = smile_ratio
-
-            # Analiza otwarcia oczu
-            # Używamy punktów górnej i dolnej powieki do określenia otwarcia oka
-            # Lewe oko
-            left_eye_top = landmarks[159]  # Górna powieka lewego oka
-            left_eye_bottom = landmarks[145]  # Dolna powieka lewego oka
-            left_eye_distance = abs(left_eye_top[1] - left_eye_bottom[1]) * img_height
-
-            # Prawe oko
-            right_eye_top = landmarks[386]  # Górna powieka prawego oka
-            right_eye_bottom = landmarks[374]  # Dolna powieka prawego oka
-            right_eye_distance = abs(right_eye_top[1] - right_eye_bottom[1]) * img_height
-
-            # Normalizacja względem rozmiaru twarzy
-            if face_height > 0:
-                eye_open_norm = 8.0  # Współczynnik normalizacji
-                left_eye_open_ratio = min(1.0, (left_eye_distance / face_height) * eye_open_norm)
-                right_eye_open_ratio = min(1.0, (right_eye_distance / face_height) * eye_open_norm)
-
-                # Wartości bliskie 0 oznaczają zamknięte oczy
-                expressions["left_eye_open"] = left_eye_open_ratio
-                expressions["right_eye_open"] = right_eye_open_ratio
-
-            # Analiza uniesienia brwi
-            # Używamy punktów brwi i oczu do określenia uniesienia brwi
-            left_eyebrow = landmarks[107]  # Punkt na lewej brwi
-            left_eye_position = landmarks[159]  # Punkt na lewym oku
-
-            right_eyebrow = landmarks[336]  # Punkt na prawej brwi
-            right_eye_position = landmarks[386]  # Punkt na prawym oku
-
-            # Obliczamy odległość między brwiami a oczami
-            left_eyebrow_distance = abs(left_eyebrow[1] - left_eye_position[1]) * img_height
-            right_eyebrow_distance = abs(right_eyebrow[1] - right_eye_position[1]) * img_height
-            avg_eyebrow_distance = (left_eyebrow_distance + right_eyebrow_distance) / 2
-
-            # Normalizacja względem rozmiaru twarzy
-            if face_height > 0:
-                eyebrow_raised_ratio = min(1.0, (avg_eyebrow_distance / face_height) * 10.0)
-                expressions["eyebrow_raised"] = eyebrow_raised_ratio
-
-            # Analiza zaskoczenia (kombinacja otwarcia oczu, ust i uniesienia brwi)
-            surprise_score = (expressions["mouth_open"] + expressions["eyebrow_raised"] +
-                              (expressions["left_eye_open"] + expressions["right_eye_open"]) / 2) / 3
-            expressions["surprise"] = min(1.0, surprise_score)
-
-            # Dodajemy debugowanie - co 100 klatek logujemy wartości uśmiechu
-            if self.frame_count % 100 == 0:
-                self.logger.debug(
-                    "FaceMeshDetector",
-                    f"Analiza uśmiechu: wartość={expressions['smile']:.2f}, "
-                    f"diff_lewy={left_up_diff:.4f}, diff_prawy={right_up_diff:.4f}",
-                    log_type="FACE"
+            # Warn if dimensions differ from requested
+            if real_width != width or real_height != height:
+                self.logger.warning(
+                    "CameraCapture",
+                    f"Requested resolution {width}x{height} not supported. "
+                    f"Using closest available: {real_width}x{real_height}",
+                    log_type="CAMERA"
                 )
+
+            return True
 
         except Exception as e:
             self.logger.error(
-                "FaceMeshDetector",
-                f"Błąd podczas analizy wyrazu twarzy: {str(e)}",
-                log_type="FACE"
+                "CameraCapture",
+                f"Error changing resolution: {str(e)}",
+                log_type="CAMERA",
+                error={"error": str(e)}
             )
+            return False
 
-        return expressions
-
-    def draw_face_mesh(
-        self,
-        image: np.ndarray,
-        face_landmarks: Any,
-        draw_tesselation: bool = True,
-        draw_contours: bool = True,
-        draw_irises: bool = True
-    ) -> np.ndarray:
-        """
-        Rysuje siatkę twarzy na obrazie.
+    def set_fps(self, fps: int) -> bool:
+        """Set target frames per second.
 
         Args:
-            image (np.ndarray): Obraz wejściowy (BGR)
-            face_landmarks: Obiekt multi_face_landmarks z MediaPipe
-            draw_tesselation (bool): Czy rysować pełną siatkę twarzy
-            draw_contours (bool): Czy rysować kontury twarzy (oczy, usta, brwi)
-            draw_irises (bool): Czy rysować tęczówki (jeśli są dostępne)
+            fps: New FPS value
 
         Returns:
-            np.ndarray: Obraz z narysowaną siatką twarzy
+            True if FPS changed successfully
         """
-        if face_landmarks is None:
-            return image
-
-        # Tworzymy kopię obrazu
-        img_copy = image.copy()
-
-        # Dla każdej wykrytej twarzy
-        for face_landmark in face_landmarks:
-            # Rysujemy pełną siatkę twarzy
-            if draw_tesselation:
-                self.mp_drawing.draw_landmarks(
-                    image=img_copy,
-                    landmark_list=face_landmark,
-                    connections=self.mp_face_mesh.FACEMESH_TESSELATION,
-                    landmark_drawing_spec=None,
-                    connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_tesselation_style()
-                )
-
-            # Rysujemy kontury (oczy, usta, brwi, owal twarzy)
-            if draw_contours:
-                self.mp_drawing.draw_landmarks(
-                    image=img_copy,
-                    landmark_list=face_landmark,
-                    connections=self.mp_face_mesh.FACEMESH_CONTOURS,
-                    landmark_drawing_spec=None,
-                    connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_contours_style()
-                )
-
-            # Rysujemy tęczówki (jeśli są dostępne w używanej wersji MediaPipe)
-            if draw_irises and hasattr(self.mp_face_mesh, 'FACEMESH_IRISES'):
-                self.mp_drawing.draw_landmarks(
-                    image=img_copy,
-                    landmark_list=face_landmark,
-                    connections=self.mp_face_mesh.FACEMESH_IRISES,
-                    landmark_drawing_spec=None,
-                    connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_iris_connections_style()
-                )
-
-        return img_copy
-
-    def draw_simplified_face(
-        self,
-        image: np.ndarray,
-        landmarks: List[Tuple[float, float, float, float]],
-        expressions: Dict[str, float] = None
-    ) -> np.ndarray:
-        """
-        Rysuje uproszczoną twarz z ważnymi elementami.
-
-        Args:
-            image (np.ndarray): Obraz wejściowy (BGR)
-            landmarks (List[Tuple[float, float, float, float]]): Lista punktów
-            expressions (Dict[str, float], optional): Słownik z wartościami ekspresji twarzy
-
-        Returns:
-            np.ndarray: Obraz z narysowaną uproszczoną twarzą
-        """
-        if landmarks is None or len(landmarks) < 468:
-            return image
-
-        # Tworzymy kopię obrazu
-        img_copy = image.copy()
-        h, w, _ = img_copy.shape
-
-        # Jeśli nie podano ekspresji, używamy pustych
-        if expressions is None:
-            expressions = {
-                "mouth_open": 0.0,
-                "smile": 0.0,
-                "left_eye_open": 1.0,
-                "right_eye_open": 1.0,
-                "eyebrow_raised": 0.0,
-                "surprise": 0.0
-            }
+        if not self.is_open or self.cap is None:
+            self.logger.warning(
+                "CameraCapture",
+                "Attempting to change FPS on closed camera",
+                log_type="CAMERA"
+            )
+            return False
 
         try:
-            # Rysowanie owalu twarzy
-            face_points = []
-            for idx in self.FACE_OVAL:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                face_points.append((x, y))
+            self.logger.debug("CameraCapture", f"Changing FPS to {fps}", log_type="CAMERA")
 
-            if face_points:
-                cv2.polylines(img_copy, [np.array(face_points)], True, (0, 255, 0), 2)
+            self.cap.set(cv2.CAP_PROP_FPS, fps)
 
-            # Rysowanie oczu
-            left_eye_points = []
-            for idx in self.LEFT_EYE:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                left_eye_points.append((x, y))
+            # Check actual FPS
+            real_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            self.fps = real_fps
+            self.camera_info["fps"] = real_fps
 
-            right_eye_points = []
-            for idx in self.RIGHT_EYE:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                right_eye_points.append((x, y))
+            self.logger.info(
+                "CameraCapture",
+                f"New FPS: {real_fps:.1f}",
+                log_type="CAMERA"
+            )
 
-            if left_eye_points:
-                # Otwartość oka wpływa na to, jak jest rysowane
-                if expressions["left_eye_open"] < 0.2:
-                    # Rysuj zamknięte oko (linia)
-                    left_eye_center = np.mean(np.array(left_eye_points), axis=0).astype(int)
-                    left_eye_width = int(np.max(np.array(left_eye_points)[:, 0]) -
-                                         np.min(np.array(left_eye_points)[:, 0]))
-                    cv2.line(img_copy,
-                             (left_eye_center[0] - left_eye_width // 2, left_eye_center[1]),
-                             (left_eye_center[0] + left_eye_width // 2, left_eye_center[1]),
-                             (0, 0, 255), 2)
-                else:
-                    # Rysuj otwarte oko (kontur)
-                    cv2.polylines(img_copy, [np.array(left_eye_points)], True, (0, 0, 255), 2)
+            if abs(real_fps - fps) > 0.1:
+                self.logger.warning(
+                    "CameraCapture",
+                    f"Requested FPS {fps} not supported. "
+                    f"Using closest available: {real_fps:.1f}",
+                    log_type="CAMERA"
+                )
 
-                    # Rysuj źrenicę
-                    left_eye_center = np.mean(np.array(left_eye_points), axis=0).astype(int)
-                    pupil_radius = max(1, int((np.max(np.array(left_eye_points)[:, 0]) -
-                                               np.min(np.array(left_eye_points)[:, 0])) * 0.15))
-                    cv2.circle(img_copy, tuple(left_eye_center), pupil_radius, (0, 0, 0), -1)
-
-            if right_eye_points:
-                # Otwartość oka wpływa na to, jak jest rysowane
-                if expressions["right_eye_open"] < 0.2:
-                    # Rysuj zamknięte oko (linia)
-                    right_eye_center = np.mean(np.array(right_eye_points), axis=0).astype(int)
-                    right_eye_width = int(np.max(np.array(right_eye_points)[:, 0]) -
-                                          np.min(np.array(right_eye_points)[:, 0]))
-                    cv2.line(img_copy,
-                             (right_eye_center[0] - right_eye_width // 2, right_eye_center[1]),
-                             (right_eye_center[0] + right_eye_width // 2, right_eye_center[1]),
-                             (0, 0, 255), 2)
-                else:
-                    # Rysuj otwarte oko (kontur)
-                    cv2.polylines(img_copy, [np.array(right_eye_points)], True, (0, 0, 255), 2)
-
-                    # Rysuj źrenicę
-                    right_eye_center = np.mean(np.array(right_eye_points), axis=0).astype(int)
-                    pupil_radius = max(1, int((np.max(np.array(right_eye_points)[:, 0]) -
-                                               np.min(np.array(right_eye_points)[:, 0])) * 0.15))
-                    cv2.circle(img_copy, tuple(right_eye_center), pupil_radius, (0, 0, 0), -1)
-
-            # Rysowanie brwi
-            left_eyebrow_points = []
-            for idx in self.LEFT_EYEBROW:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                left_eyebrow_points.append((x, y))
-
-            right_eyebrow_points = []
-            for idx in self.RIGHT_EYEBROW:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                right_eyebrow_points.append((x, y))
-
-            if left_eyebrow_points:
-                cv2.polylines(img_copy, [np.array(left_eyebrow_points)], False, (255, 0, 0), 2)
-
-            if right_eyebrow_points:
-                cv2.polylines(img_copy, [np.array(right_eyebrow_points)], False, (255, 0, 0), 2)
-
-            # Rysowanie ust
-            outer_lips_points = []
-            for idx in self.LIPS_OUTER:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                outer_lips_points.append((x, y))
-
-            inner_lips_points = []
-            for idx in self.LIPS_INNER:
-                x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                inner_lips_points.append((x, y))
-
-            if outer_lips_points:
-                # Rysujemy usta z uwzględnieniem uśmiechu i otwarcia
-                mouth_color = (0, 0, 255)  # Czerwony
-
-                # Zewnętrzny kontur ust
-                cv2.polylines(img_copy, [np.array(outer_lips_points)], True, mouth_color, 2)
-
-                # Wewnętrzny kontur ust - tylko jeśli usta są otwarte
-                if expressions["mouth_open"] > 0.1 and inner_lips_points:
-                    cv2.polylines(img_copy, [np.array(inner_lips_points)], True, mouth_color, 1)
-                    # Przy bardzo otwartych ustach, wypełniamy wnętrze ciemniejszym kolorem
-                    if expressions["mouth_open"] > 0.3:
-                        cv2.fillPoly(img_copy, [np.array(inner_lips_points)], (0, 0, 100))  # Ciemny czerwony
-
-            # Rysowanie nosa
-            if self.NOSE_BRIDGE and len(self.NOSE_BRIDGE) > 0:
-                nose_points = []
-                for idx in self.NOSE_BRIDGE:
-                    x, y = int(landmarks[idx][0] * w), int(landmarks[idx][1] * h)
-                    nose_points.append((x, y))
-
-                # Dodajemy czubek nosa
-                nose_tip_x = int(landmarks[self.NOSE_TIP][0] * w)
-                nose_tip_y = int(landmarks[self.NOSE_TIP][1] * h)
-                nose_points.append((nose_tip_x, nose_tip_y))
-
-                # Rysujemy linię nosa
-                if len(nose_points) > 1:
-                    for i in range(len(nose_points) - 1):
-                        cv2.line(img_copy, nose_points[i], nose_points[i + 1], (0, 255, 255), 2)
+            return True
 
         except Exception as e:
             self.logger.error(
-                "FaceMeshDetector",
-                f"Błąd podczas rysowania uproszczonej twarzy: {str(e)}",
-                log_type="FACE"
+                "CameraCapture",
+                f"Error changing FPS: {str(e)}",
+                log_type="CAMERA",
+                error={"error": str(e)}
             )
+            return False
 
-        return img_copy
-
-    def get_detection_stats(self) -> Dict[str, Any]:
-        """
-        Zwraca statystyki detekcji.
+    def list_available_cameras(self) -> List[Dict[str, Any]]:
+        """Detect available cameras on system.
 
         Returns:
-            Dict[str, Any]: Statystyki detekcji
+            List of dictionaries with information about available cameras
         """
-        detection_ratio = self.detection_count / max(1, self.frame_count)
+        available_cameras = []
+        max_cameras = 10  # Limit to 10 cameras
 
-        return {
-            "total_frames": self.frame_count,
-            "detection_count": self.detection_count,
-            "detection_ratio": detection_ratio,
-            "last_detection_score": self.last_detection_score,
-            "max_num_faces": self.max_num_faces,
-            "min_detection_confidence": self.min_detection_confidence,
-            "min_tracking_confidence": self.min_tracking_confidence
-        }
+        self.logger.debug("CameraCapture", "Searching for available cameras...", log_type="CAMERA")
 
-    def reset_stats(self) -> None:
+        for i in range(max_cameras):
+            try:
+                cap = cv2.VideoCapture(i)
+                if cap.isOpened():
+                    camera_info = {
+                        "id": i,
+                        "resolution": (
+                            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        ),
+                        "fps": cap.get(cv2.CAP_PROP_FPS),
+                        "backend": cap.getBackendName()
+                    }
+
+                    # Capture one frame for verification
+                    ret, _ = cap.read()
+                    if ret:
+                        available_cameras.append(camera_info)
+                        self.logger.debug(
+                            "CameraCapture",
+                            f"Found camera ID: {i} - {camera_info['resolution']} @ {camera_info['fps']} FPS",
+                            log_type="CAMERA"
+                        )
+
+                cap.release()
+
+            except Exception as e:
+                self.logger.trace(
+                    "CameraCapture",
+                    f"Error checking camera ID: {i}: {str(e)}",
+                    log_type="CAMERA"
+                )
+
+        self.logger.info(
+            "CameraCapture",
+            f"Found {len(available_cameras)} available cameras",
+            log_type="CAMERA",
+            cameras=available_cameras
+        )
+
+        return available_cameras
+
+    def flip_horizontal(self, frame: np.ndarray) -> np.ndarray:
+        """Flip frame horizontally.
+
+        Args:
+            frame: Input frame
+
+        Returns:
+            Horizontally flipped frame
         """
-        Resetuje statystyki detekcji.
+        return cv2.flip(frame, 1)
+
+    def adjust_brightness_contrast(
+        self,
+        frame: np.ndarray,
+        brightness: float = 0,
+        contrast: float = 1.0
+    ) -> np.ndarray:
+        """Adjust frame brightness and contrast.
+
+        Args:
+            frame: Input frame
+            brightness: Brightness adjustment (-1.0 to 1.0)
+            contrast: Contrast multiplier (0.0 to 3.0)
+
+        Returns:
+            Adjusted frame
         """
-        self.frame_count = 0
-        self.detection_count = 0
-        self.last_detection_score = 0.0
-        self.last_face_data = None
+        # Convert brightness from range -1.0:1.0 to pixel offset value
+        brightness_value = int(brightness * 255)
+
+        # Apply contrast and brightness
+        adjusted = cv2.convertScaleAbs(frame, alpha=contrast, beta=brightness_value)
+
+        return adjusted
 
     def close(self) -> None:
-        """
-        Zwalnia zasoby używane przez detektor.
-        """
-        try:
-            if hasattr(self, 'face_mesh') and self.face_mesh is not None:
-                self.face_mesh.close()
-                self.face_mesh = None  # Ustawiamy na None po zamknięciu
-                self.logger.debug("FaceMeshDetector", "Detektor twarzy zamknięty", log_type="FACE")
-        except Exception as e:
-            # Nie zgłaszamy wyjątku, tylko logujemy błąd
-            self.logger.warning(
-                "FaceMeshDetector",
-                f"Błąd podczas zamykania detektora twarzy: {str(e)}",
-                log_type="FACE"
-            )
+        """Close camera connection."""
+        if self.is_open and self.cap is not None:
+            self.cap.release()
+            self.is_open = False
+            self.logger.info("CameraCapture", "Camera closed", log_type="CAMERA")
 
     def __del__(self):
-        """
-        Destruktor klasy, zapewniający zwolnienie zasobów.
-        """
-        try:
-            # Wywołujemy close() tylko jeśli face_mesh nie jest None
-            if hasattr(self, 'face_mesh') and self.face_mesh is not None:
-                self.close()
-        except:
-            # Ignorujemy błędy w destruktorze - nie ma sensu ich logować,
-            # bo logger może już być niedostępny
-            pass
+        """Destructor ensuring camera is closed."""
+        self.close()
