@@ -133,9 +133,15 @@ class ApplicationController:
 
         # Debug toggle
         elif key == "d":
-            debug = not self.config.get("app.debug", False)
-            self.config.set("app.debug", debug)
-            self.logger.info("Controller", f"Debug mode: {debug}")
+            self.ui.toggle_debug()
+            debug_status = "enabled" if self.ui.show_debug else "disabled"
+            self.logger.info("Controller", f"Debug mode {debug_status}")
+
+        # Landmarks toggle
+        elif key == "l":
+            self.ui.toggle_landmarks()
+            landmarks_status = "enabled" if self.ui.show_landmarks else "disabled"
+            self.logger.info("Controller", f"Landmarks display {landmarks_status}")
 
         # Flip camera
         elif key == "f":
@@ -167,7 +173,8 @@ class ApplicationController:
             "=== Keyboard Controls ===",
             "q or ESC: Quit application",
             "p: Pause/Resume",
-            "d: Toggle debug mode",
+            "d: Toggle debug mode (show face mesh & skeleton)",
+            "l: Toggle landmarks only",
             "f: Flip camera horizontally",
             "s: Change stick figure mood",
             "=========================",

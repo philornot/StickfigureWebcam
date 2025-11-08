@@ -8,6 +8,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from src.drawing.pose_analyzer import PoseAnalyzer
 from src.drawing.stick_figure_renderer import StickFigureRenderer
 from src.utils.custom_logger import CustomLogger
 from src.utils.performance import PerformanceMonitor
@@ -46,6 +47,7 @@ class VideoPipeline:
         self.face_mesh = None
         self.hands = None
         self.renderer = None
+        self.pose_analyzer = None
 
         # Performance monitoring
         self.performance = PerformanceMonitor("VideoPipeline")
@@ -74,6 +76,9 @@ class VideoPipeline:
             # Initialize renderer
             if not self._init_renderer():
                 return False
+
+            # Initialize pose analyzer
+            self.pose_analyzer = PoseAnalyzer(logger=self.logger)
 
             # Initialize virtual camera (optional)
             self._init_virtual_camera()
@@ -185,6 +190,7 @@ class VideoPipeline:
                 - original_frame: Raw camera frame
                 - processed_frame: Stick figure output
                 - face_data: Detected face/hand data
+                - upper_body_data: Upper body skeleton data
                 - fps: Current FPS
         """
         self.performance.start_timer()
@@ -209,6 +215,13 @@ class VideoPipeline:
             # Process detections
             face_data = self._process_detections(face_results, hands_results)
 
+            # Analyze upper body if we have landmarks
+            upper_body_data = None
+            if face_data.get("landmarks"):
+                upper_body_data = self.pose_analyzer.analyze_upper_body(
+                    face_data["landmarks"], frame.shape[1], frame.shape[0]
+                )
+
             # Render stick figure
             stick_figure = self.renderer.render(face_data)
 
@@ -222,6 +235,7 @@ class VideoPipeline:
                 "original_frame": frame,
                 "processed_frame": stick_figure,
                 "face_data": face_data,
+                "upper_body_data": upper_body_data,
                 "fps": self.performance.get_current_fps(),
             }
 
@@ -266,9 +280,6 @@ class VideoPipeline:
         Returns:
             Expression values (0.0-1.0)
         """
-        # Simple expression analysis
-        # This is a simplified version - could be enhanced
-
         try:
             # Mouth open detection (simplified)
             upper_lip = landmarks[13]

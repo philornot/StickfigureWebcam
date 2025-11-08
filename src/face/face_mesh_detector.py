@@ -178,6 +178,96 @@ class FaceMeshDetector:
                 "right_eye_open": 1.0,
             }
 
+    def draw_landmarks_on_image(
+        self,
+        image: np.ndarray,
+        landmarks: List[Tuple[float, float, float, float]],
+        draw_contours: bool = True,
+    ) -> np.ndarray:
+        """Draw facial landmarks on image.
+
+        Args:
+            image: Input image (BGR)
+            landmarks: List of landmarks (x, y, z, visibility)
+            draw_contours: Whether to draw face contours
+
+        Returns:
+            Image with drawn landmarks
+        """
+        if landmarks is None or len(landmarks) == 0:
+            return image
+
+        img_copy = image.copy()
+        h, w, _ = img_copy.shape
+
+        # Draw landmarks as small circles
+        for i, landmark in enumerate(landmarks):
+            x, y, _, _ = landmark
+            cx, cy = int(x * w), int(y * h)
+
+            # Different colors for different face regions
+            if i < 10:  # Face oval
+                color = (0, 255, 0)  # Green
+            elif 10 <= i < 68:  # Eyebrows and eyes
+                color = (255, 0, 0)  # Blue
+            elif 68 <= i < 200:  # Nose and mouth
+                color = (0, 0, 255)  # Red
+            else:  # Rest
+                color = (255, 255, 0)  # Cyan
+
+            cv2.circle(img_copy, (cx, cy), 1, color, -1)
+
+        # Draw face contours if requested
+        if draw_contours:
+            # Face oval
+            face_oval_indices = [
+                10,
+                338,
+                297,
+                332,
+                284,
+                251,
+                389,
+                356,
+                454,
+                323,
+                361,
+                288,
+                397,
+                365,
+                379,
+                378,
+                400,
+                377,
+                152,
+                148,
+                176,
+                149,
+                150,
+                136,
+                172,
+                58,
+                132,
+                93,
+                234,
+                127,
+                162,
+                21,
+                54,
+                103,
+                67,
+                109,
+            ]
+            for i in range(len(face_oval_indices) - 1):
+                pt1_idx = face_oval_indices[i]
+                pt2_idx = face_oval_indices[i + 1]
+                if pt1_idx < len(landmarks) and pt2_idx < len(landmarks):
+                    pt1 = (int(landmarks[pt1_idx][0] * w), int(landmarks[pt1_idx][1] * h))
+                    pt2 = (int(landmarks[pt2_idx][0] * w), int(landmarks[pt2_idx][1] * h))
+                    cv2.line(img_copy, pt1, pt2, (0, 255, 0), 1)
+
+        return img_copy
+
     def get_detection_stats(self) -> Dict[str, Any]:
         """Get detection statistics.
 
