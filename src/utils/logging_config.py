@@ -47,10 +47,7 @@ def get_logger_config(debug: bool = False) -> Dict[str, Any]:
         "log_file": log_file,
         "console_level": "DEBUG" if debug else "INFO",
         "file_level": "DEBUG",
-        "timezone": "Europe/Warsaw",
-        "max_json_length": 500,
-        "trim_lists": True,
-        "verbose": debug
+        "timezone": "Europe/Warsaw"
     }
 
 
