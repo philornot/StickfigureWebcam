@@ -3,15 +3,14 @@
 """Simplified virtual camera wrapper with cleaner initialization."""
 
 import platform
-import time
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
 from src.utils.custom_logger import CustomLogger
 
 
-class SimpleVirtualCamera:
+class VirtualCamera:
     """Simplified virtual camera wrapper.
 
     This version removes complex retry logic and multiple fallback attempts.
@@ -118,28 +117,28 @@ class SimpleVirtualCamera:
         if self.system == "Windows":
             return (
                 base_msg + "Make sure OBS Studio is installed and Virtual Camera is started:\n"
-                "1. Install OBS Studio from https://obsproject.com\n"
-                "2. Open OBS Studio\n"
-                "3. Go to Tools → Start Virtual Camera\n"
-                "4. Try running this application again"
+                           "1. Install OBS Studio from https://obsproject.com\n"
+                           "2. Open OBS Studio\n"
+                           "3. Go to Tools → Start Virtual Camera\n"
+                           "4. Try running this application again"
             )
 
         elif self.system == "Linux":
             return (
                 base_msg + "Make sure v4l2loopback kernel module is loaded:\n"
-                "1. Install: sudo apt-get install v4l2loopback-dkms\n"
-                "2. Load module: sudo modprobe v4l2loopback\n"
-                "3. Verify: ls /dev/video*\n"
-                "4. Try running this application again"
+                           "1. Install: sudo apt-get install v4l2loopback-dkms\n"
+                           "2. Load module: sudo modprobe v4l2loopback\n"
+                           "3. Verify: ls /dev/video*\n"
+                           "4. Try running this application again"
             )
 
         else:  # macOS
             return (
                 base_msg + "Make sure OBS Studio with virtual camera plugin is installed:\n"
-                "1. Install OBS Studio from https://obsproject.com\n"
-                "2. Install obs-mac-virtualcam plugin\n"
-                "3. Open OBS and start Virtual Camera\n"
-                "4. Try running this application again"
+                           "1. Install OBS Studio from https://obsproject.com\n"
+                           "2. Install obs-mac-virtualcam plugin\n"
+                           "3. Open OBS and start Virtual Camera\n"
+                           "4. Try running this application again"
             )
 
     def send(self, frame: np.ndarray):
@@ -195,7 +194,7 @@ class SimpleVirtualCamera:
 
 def try_create_virtual_camera(
     width: int = 640, height: int = 480, fps: int = 30, logger: Optional[CustomLogger] = None
-) -> Optional[SimpleVirtualCamera]:
+) -> Optional[VirtualCamera]:
     """Try to create virtual camera, return None on failure.
 
     This is a convenience function that catches initialization errors
@@ -211,7 +210,7 @@ def try_create_virtual_camera(
         SimpleVirtualCamera instance or None if initialization failed
     """
     try:
-        return SimpleVirtualCamera(width, height, fps, logger)
+        return VirtualCamera(width, height, fps, logger)
     except RuntimeError as e:
         if logger:
             logger.warning("VirtualCamera", str(e))
