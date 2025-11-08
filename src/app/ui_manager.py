@@ -35,7 +35,7 @@ class UIManager:
         Args:
             frame_data: Dictionary containing frame information
         """
-        if not self.show_preview:
+        if not self.show_preview or not frame_data:
             return
 
         original = frame_data.get("original_frame")
@@ -94,6 +94,9 @@ class UIManager:
         Returns:
             Frame with debug overlays
         """
+        if frame_data is None:
+            return frame
+
         face_data = frame_data.get("face_data", {})
         h, w = frame.shape[:2]
 
@@ -103,7 +106,7 @@ class UIManager:
             frame = self._draw_face_mesh(frame, landmarks)
 
         # Draw upper body skeleton if available
-        if "upper_body_data" in frame_data:
+        if "upper_body_data" in frame_data and frame_data["upper_body_data"] is not None:
             upper_body = frame_data["upper_body_data"]
             frame = self._draw_upper_body_skeleton(frame, upper_body)
 

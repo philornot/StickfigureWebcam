@@ -105,10 +105,15 @@ class ApplicationController:
 
     def _process_frame(self):
         """Process a single frame through the pipeline."""
-        frame_data = self.pipeline.process_frame()
+        try:
+            frame_data = self.pipeline.process_frame()
 
-        if frame_data and self.ui:
-            self.ui.update(frame_data)
+            if frame_data is not None and self.ui:
+                self.ui.update(frame_data)
+        except Exception as e:
+            # Only log every 30th error to avoid spam
+            if self.frame_count % 30 == 0:
+                self.logger.error("Controller", f"Error processing frame: {str(e)}")
 
     def _handle_input(self):
         """Handle keyboard input from UI."""

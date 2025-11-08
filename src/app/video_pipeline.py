@@ -134,6 +134,15 @@ class VideoPipeline:
                 min_tracking_confidence=0.5,
             )
 
+            # ADD THIS: Pose for body tracking
+            mp_pose = mp.solutions.pose
+            self.pose = mp_pose.Pose(
+                static_image_mode=False,
+                model_complexity=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+
             self.logger.info("Pipeline", "MediaPipe initialized")
             return True
 
@@ -211,16 +220,21 @@ class VideoPipeline:
             # Detect face and hands
             face_results = self.face_mesh.process(rgb_frame)
             hands_results = self.hands.process(rgb_frame)
+            pose_results = self.pose.process(rgb_frame)
 
             # Process detections
             face_data = self._process_detections(face_results, hands_results)
 
-            # Analyze upper body if we have landmarks
+            # Analyze upper body from POSE (not face)
             upper_body_data = None
-            if face_data.get("landmarks"):
-                upper_body_data = self.pose_analyzer.analyze_upper_body(
-                    face_data["landmarks"], frame.shape[1], frame.shape[0]
-                )
+            if pose_results and pose_results.pose_landmarks:
+                try:
+                    upper_body_data = self._extract_upper_body_from_pose(
+                        pose_results.pose_landmarks, frame.shape[1], frame.shape[0]
+                    )
+                except Exception as e:
+                    self.logger.debug("Pipeline", f"Error extracting upper body: {str(e)}")
+                    upper_body_data = None
 
             # Render stick figure
             stick_figure = self.renderer.render(face_data)
@@ -311,24 +325,34 @@ class VideoPipeline:
             multi_hand_landmarks: List of hand landmarks
 
         Returns:
-            Processed hand data
+            Processed hand data with shoulder/elbow estimation
         """
         hands_data = {"left_hand": None, "right_hand": None}
 
         for hand_landmarks in multi_hand_landmarks:
-            # Simplified hand processing
+            # Get wrist position (landmark 0)
             wrist = hand_landmarks.landmark[0]
             wrist_pos = (wrist.x, wrist.y, wrist.z, 1.0)
 
-            # Estimate elbow position (simplified)
-            elbow_x = wrist.x + (0.5 - wrist.x) * 0.3
-            elbow_y = wrist.y - 0.15
-            elbow_pos = (elbow_x, elbow_y, 0.0, 1.0)
-
-            # Simple left/right detection
+            # Simple left/right detection based on x position
             is_left = wrist.x < 0.5
 
-            hand_data = {"wrist": wrist_pos, "elbow": elbow_pos, "is_left": is_left}
+            # Estimate elbow position (simplified - above and towards center from wrist)
+            elbow_x = wrist.x + (0.5 - wrist.x) * 0.4
+            elbow_y = max(0.1, wrist.y - 0.2)  # Above wrist, not too high
+            elbow_pos = (elbow_x, elbow_y, 0.0, 0.8)
+
+            # Estimate shoulder position (more towards center and higher)
+            shoulder_x = wrist.x + (0.5 - wrist.x) * 0.7
+            shoulder_y = max(0.05, elbow_y - 0.15)  # Above elbow
+            shoulder_pos = (shoulder_x, shoulder_y, 0.0, 0.7)
+
+            hand_data = {
+                "wrist": wrist_pos,
+                "elbow": elbow_pos,
+                "shoulder": shoulder_pos,
+                "is_left": is_left,
+            }
 
             if is_left:
                 hands_data["left_hand"] = hand_data
@@ -351,6 +375,161 @@ class VideoPipeline:
             # Non-critical error, just log
             self.logger.debug("Pipeline", f"Virtual camera send failed: {str(e)}")
 
+    def _create_upper_body_from_hands(
+        self, hands_data: Dict[str, Any], frame_width: int, frame_height: int
+    ) -> Optional[Dict[str, Any]]:
+        """Create upper body data from hand detection.
+
+        Args:
+            hands_data: Hand detection data
+            frame_width: Frame width
+            frame_height: Frame height
+
+        Returns:
+            Upper body data dictionary or None
+        """
+        if not hands_data:
+            return None
+
+        left_hand = hands_data.get("left_hand")
+        right_hand = hands_data.get("right_hand")
+
+        if not left_hand and not right_hand:
+            return None
+
+        result = {
+            "has_shoulders": False,
+            "has_arms": False,
+            "shoulder_positions": (None, None),
+            "elbow_positions": (None, None),
+            "wrist_positions": (None, None),
+        }
+
+        # Process left hand
+        if left_hand:
+            result["has_arms"] = True
+
+            # Convert normalized coords to pixel coords
+            if left_hand.get("shoulder"):
+                sx, sy = (
+                    left_hand["shoulder"][0] * frame_width,
+                    left_hand["shoulder"][1] * frame_height,
+                )
+                result["shoulder_positions"] = ((int(sx), int(sy)), result["shoulder_positions"][1])
+                result["has_shoulders"] = True
+
+            if left_hand.get("elbow"):
+                ex, ey = left_hand["elbow"][0] * frame_width, left_hand["elbow"][1] * frame_height
+                result["elbow_positions"] = ((int(ex), int(ey)), result["elbow_positions"][1])
+
+            if left_hand.get("wrist"):
+                wx, wy = left_hand["wrist"][0] * frame_width, left_hand["wrist"][1] * frame_height
+                result["wrist_positions"] = ((int(wx), int(wy)), result["wrist_positions"][1])
+
+        # Process right hand
+        if right_hand:
+            result["has_arms"] = True
+
+            if right_hand.get("shoulder"):
+                sx, sy = (
+                    right_hand["shoulder"][0] * frame_width,
+                    right_hand["shoulder"][1] * frame_height,
+                )
+                result["shoulder_positions"] = (result["shoulder_positions"][0], (int(sx), int(sy)))
+                result["has_shoulders"] = True
+
+            if right_hand.get("elbow"):
+                ex, ey = right_hand["elbow"][0] * frame_width, right_hand["elbow"][1] * frame_height
+                result["elbow_positions"] = (result["elbow_positions"][0], (int(ex), int(ey)))
+
+            if right_hand.get("wrist"):
+                wx, wy = right_hand["wrist"][0] * frame_width, right_hand["wrist"][1] * frame_height
+                result["wrist_positions"] = (result["wrist_positions"][0], (int(wx), int(wy)))
+
+        return result
+
+    def _extract_upper_body_from_pose(
+        self, pose_landmarks, frame_width: int, frame_height: int
+    ) -> Dict[str, Any]:
+        """Extract upper body data from MediaPipe Pose.
+
+        Args:
+            pose_landmarks: Pose landmarks from MediaPipe
+            frame_width: Frame width
+            frame_height: Frame height
+
+        Returns:
+            Upper body data dictionary
+        """
+        # MediaPipe Pose landmark indices
+        LEFT_SHOULDER = 11
+        RIGHT_SHOULDER = 12
+        LEFT_ELBOW = 13
+        RIGHT_ELBOW = 14
+        LEFT_WRIST = 15
+        RIGHT_WRIST = 16
+
+        landmarks = pose_landmarks.landmark
+
+        result = {
+            "has_shoulders": False,
+            "has_arms": False,
+            "shoulder_positions": (None, None),
+            "elbow_positions": (None, None),
+            "wrist_positions": (None, None),
+        }
+
+        # Check visibility threshold
+        visibility_threshold = 0.5
+
+        # Extract shoulders
+        left_shoulder = landmarks[LEFT_SHOULDER]
+        right_shoulder = landmarks[RIGHT_SHOULDER]
+
+        if (
+            left_shoulder.visibility > visibility_threshold
+            and right_shoulder.visibility > visibility_threshold
+        ):
+            result["has_shoulders"] = True
+            result["shoulder_positions"] = (
+                (int(left_shoulder.x * frame_width), int(left_shoulder.y * frame_height)),
+                (int(right_shoulder.x * frame_width), int(right_shoulder.y * frame_height)),
+            )
+
+        # Extract elbows
+        left_elbow = landmarks[LEFT_ELBOW]
+        right_elbow = landmarks[RIGHT_ELBOW]
+
+        left_elbow_pos = None
+        right_elbow_pos = None
+
+        if left_elbow.visibility > visibility_threshold:
+            left_elbow_pos = (int(left_elbow.x * frame_width), int(left_elbow.y * frame_height))
+            result["has_arms"] = True
+
+        if right_elbow.visibility > visibility_threshold:
+            right_elbow_pos = (int(right_elbow.x * frame_width), int(right_elbow.y * frame_height))
+            result["has_arms"] = True
+
+        result["elbow_positions"] = (left_elbow_pos, right_elbow_pos)
+
+        # Extract wrists
+        left_wrist = landmarks[LEFT_WRIST]
+        right_wrist = landmarks[RIGHT_WRIST]
+
+        left_wrist_pos = None
+        right_wrist_pos = None
+
+        if left_wrist.visibility > visibility_threshold:
+            left_wrist_pos = (int(left_wrist.x * frame_width), int(left_wrist.y * frame_height))
+
+        if right_wrist.visibility > visibility_threshold:
+            right_wrist_pos = (int(right_wrist.x * frame_width), int(right_wrist.y * frame_height))
+
+        result["wrist_positions"] = (left_wrist_pos, right_wrist_pos)
+
+        return result
+
     def shutdown(self):
         """Shutdown the pipeline and release resources."""
         self.logger.info("Pipeline", "Shutting down pipeline")
@@ -363,6 +542,9 @@ class VideoPipeline:
 
         if self.hands:
             self.hands.close()
+
+        if self.pose:
+            self.pose.close()
 
         if self.virtual_camera:
             self.virtual_camera.close()
