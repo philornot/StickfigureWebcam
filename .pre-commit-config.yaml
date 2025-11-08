@@ -1,34 +1,88 @@
 # .pre-commit-config.yaml - Configuration for pre-commit hooks
 # These hooks run automatically before each commit to ensure code quality
+# Install with: pre-commit install
+# Run manually: pre-commit run --all-files
 
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.5.0  # Updated from v4.4.0
     hooks:
     -   id: trailing-whitespace
+        name: Trim trailing whitespace
+        description: Remove trailing whitespace from all files
     -   id: end-of-file-fixer
+        name: Fix end of files
+        description: Ensure files end with a newline
     -   id: check-yaml
+        name: Check YAML syntax
+        description: Validate YAML file syntax
     -   id: check-added-large-files
+        name: Check for large files
+        description: Prevent committing files larger than 500KB
+        args: ['--maxkb=500']
+    -   id: check-case-conflict
+        name: Check for case conflicts
+        description: Ensure filenames work on case-insensitive systems
+    -   id: check-merge-conflict
+        name: Check for merge conflicts
+        description: Detect merge conflict markers
+    -   id: mixed-line-ending
+        name: Fix mixed line endings
+        description: Ensure consistent line endings
 
 -   repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+    rev: 5.13.2  # Updated from 5.12.0
     hooks:
     -   id: isort
-        name: isort (python)
+        name: Sort imports with isort
+        description: Automatically sort and format Python imports
 
 -   repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 24.1.0  # Updated from 23.3.0
     hooks:
     -   id: black
+        name: Format code with black
+        description: Auto-format Python code to PEP 8 style
+        language_version: python3
 
 -   repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
+    rev: 7.0.0  # Updated from 6.0.0
     hooks:
     -   id: flake8
+        name: Check style with flake8
+        description: Lint Python code for style issues
         additional_dependencies: [flake8-docstrings]
+        args: ['--max-line-length=100', '--extend-ignore=E203,W503']
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.3.0
+    rev: v1.8.0  # Updated from v1.3.0
     hooks:
     -   id: mypy
-        additional_dependencies: [types-requests]
+        name: Type check with mypy
+        description: Static type checking for Python
+        additional_dependencies: [types-requests, types-pytz]
+        args: [--ignore-missing-imports, --python-version=3.10]
+        exclude: ^tests/
+
+-   repo: https://github.com/PyCQA/pydocstyle
+    rev: 6.3.0
+    hooks:
+    -   id: pydocstyle
+        name: Check docstring style
+        description: Validate docstring formatting
+        args: ['--convention=google']
+        exclude: ^(tests/|setup.py)
+
+-   repo: local
+    hooks:
+    -   id: check-file-size
+        name: Check Python file size
+        description: Ensure no Python file exceeds 500 lines
+        entry: python
+        language: system
+        args: ['-c', 'import sys; lines=open(sys.argv[1]).readlines(); sys.exit(1 if len(lines)>500 else 0)']
+        files: \.py$
+        exclude: ^tests/
+
+# To skip hooks temporarily: SKIP=flake8,mypy git commit -m "..."
+# To run hooks manually: pre-commit run --all-files
