@@ -1,16 +1,12 @@
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import platform
-import subprocess
 import sys
 from typing import Any, Dict, List, Tuple
 
 import cv2
 
-# Próbujemy zaimportować pyvirtualcam, ale nie reagujemy na błąd
-# (będziemy później sprawdzać czy jest dostępny)
+# Try to import pyvirtualcam, but don't react to error
 try:
     import pyvirtualcam
 
@@ -18,7 +14,7 @@ try:
 except ImportError:
     PYVIRTUALCAM_AVAILABLE = False
 
-# Próbujemy zaimportować mediapipe
+# Try to import mediapipe
 try:
     import mediapipe as mp
 
@@ -29,21 +25,21 @@ except ImportError:
 
 class SystemCheck:
     """
-    Klasa do sprawdzania dostępności i poprawności konfiguracji
-    niezbędnych komponentów aplikacji.
+    Class for checking availability and correctness of configuration
+    of essential application components.
     """
 
     def __init__(self, logger=None):
         """
-        Inicjalizacja sprawdzania systemu.
+        Initializes system check.
 
         Args:
-            logger: Opcjonalny logger do zapisywania wyników sprawdzeń
+            logger: Optional logger for recording check results
         """
         self.logger = logger
         self.system = platform.system()  # 'Windows', 'Linux', 'Darwin' (macOS)
 
-        # Wyniki sprawdzeń
+        # Check results
         self.results = {
             "camera": {"status": False, "message": "", "details": {}},
             "virtual_camera": {"status": False, "message": "", "details": {}},
@@ -52,7 +48,7 @@ class SystemCheck:
             "v4l2loopback": {"status": False, "message": "", "details": {}},
         }
 
-        # Linki do instalacji komponentów
+        # Component installation links
         self.install_links = {
             "obs": "https://obsproject.com/download",
             "v4l2loopback": "https://github.com/umlaeute/v4l2loopback",
@@ -63,83 +59,83 @@ class SystemCheck:
 
     def check_all(self) -> Dict[str, Any]:
         """
-        Wykonuje wszystkie sprawdzenia systemu.
+        Performs all system checks.
 
         Returns:
-            Dict[str, Any]: Słownik z wynikami sprawdzeń
+            Dict[str, Any]: Dictionary with check results
         """
-        self._log("Rozpoczęcie sprawdzania systemu...")
+        self._log("Starting system check...")
 
-        # Sprawdzenie kamery
+        # Camera check
         self.check_camera()
 
-        # Sprawdzenie wirtualnej kamery
+        # Virtual camera check
         self.check_virtual_camera()
 
-        # Sprawdzenie MediaPipe
+        # MediaPipe check
         self.check_mediapipe()
 
-        # Sprawdzanie OBS (tylko na Windows i macOS)
+        # OBS check (only on Windows and macOS)
         if self.system in ["Windows", "Darwin"]:
             self.check_obs()
 
-        # Sprawdzanie v4l2loopback (tylko na Linux)
+        # v4l2loopback check (only on Linux)
         if self.system == "Linux":
             self.check_v4l2loopback()
 
-        self._log("Zakończenie sprawdzania systemu")
+        self._log("System check completed")
 
         return self.results
 
     def check_camera(self, camera_id: int = 0) -> Dict[str, Any]:
         """
-        Sprawdza, czy kamera jest dostępna i działa poprawnie.
+        Checks if camera is available and working correctly.
 
         Args:
-            camera_id (int): Identyfikator kamery do sprawdzenia
+            camera_id (int): Camera identifier to check
 
         Returns:
-            Dict[str, Any]: Wynik sprawdzenia
+            Dict[str, Any]: Check result
         """
-        self._log(f"Sprawdzanie kamery (ID: {camera_id})...")
+        self._log(f"Checking camera (ID: {camera_id})...")
 
         result = self.results["camera"]
         result["details"]["camera_id"] = camera_id
 
         try:
-            # Próba otwarcia kamery
+            # Attempt to open camera
             cap = cv2.VideoCapture(camera_id)
 
             if not cap.isOpened():
                 result["status"] = False
-                result["message"] = f"Nie można otworzyć kamery o ID: {camera_id}"
+                result["message"] = f"Cannot open camera with ID: {camera_id}"
                 self._log(result["message"], level="WARNING")
             else:
-                # Sprawdzenie, czy można odczytać klatkę
+                # Check if frame can be read
                 ret, frame = cap.read()
 
                 if not ret:
                     result["status"] = False
                     result["message"] = (
-                        f"Kamera o ID: {camera_id} jest dostępna, ale nie można odczytać klatki"
+                        f"Camera with ID: {camera_id} is available but cannot read frame"
                     )
                     self._log(result["message"], level="WARNING")
                 else:
-                    # Odczytanie parametrów kamery
+                    # Read camera parameters
                     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                     fps = cap.get(cv2.CAP_PROP_FPS)
 
                     result["status"] = True
-                    result["message"] = f"Kamera o ID: {camera_id} działa poprawnie"
+                    result["message"] = f"Camera with ID: {camera_id} is working correctly"
                     result["details"].update({"width": width, "height": height, "fps": fps})
                     self._log(result["message"])
 
-                # Zamknięcie kamery
+                # Close camera
                 cap.release()
         except Exception as e:
             result["status"] = False
-            result["message"] = f"Błąd podczas sprawdzania kamery: {str(e)}"
+            result["message"] = f"Error during camera check: {str(e)}"
             result["details"]["error"] = str(e)
             self._log(result["message"], level="ERROR")
 
@@ -147,38 +143,38 @@ class SystemCheck:
 
     def check_virtual_camera(self) -> Dict[str, Any]:
         """
-        Sprawdza, czy wirtualna kamera jest dostępna i skonfigurowana.
+        Checks if virtual camera is available and configured.
 
         Returns:
-            Dict[str, Any]: Wynik sprawdzenia
+            Dict[str, Any]: Check result
         """
-        self._log("Sprawdzanie wirtualnej kamery...")
+        self._log("Checking virtual camera...")
 
         result = self.results["virtual_camera"]
 
-        # Najpierw sprawdzamy, czy pyvirtualcam jest zainstalowany
+        # First check if pyvirtualcam is installed
         if not PYVIRTUALCAM_AVAILABLE:
             result["status"] = False
-            result["message"] = "Biblioteka pyvirtualcam nie jest zainstalowana"
+            result["message"] = "pyvirtualcam library is not installed"
             result["details"]["install_command"] = "pip install pyvirtualcam"
             result["details"]["install_link"] = self.install_links["pyvirtualcam"]
             self._log(result["message"], level="WARNING")
             return result
 
         try:
-            # Sprawdzanie dostępnych backenów - funkcja może nie być dostępna w starszych wersjach
+            # Check available backends - function may not be available in older versions
             available_backends = []
             try:
-                # Próba użycia get_available_backends (nowsze wersje pyvirtualcam)
+                # Attempt to use get_available_backends (newer pyvirtualcam versions)
                 if hasattr(pyvirtualcam, "get_available_backends"):
                     available_backends = pyvirtualcam.get_available_backends()
                     result["details"]["available_backends"] = available_backends
             except Exception:
                 pass
 
-            # Próba utworzenia wirtualnej kamery
+            # Attempt to create virtual camera
             try:
-                # Używamy małej rozdzielczości dla testu
+                # Use small resolution for test
                 cam = pyvirtualcam.Camera(width=320, height=240, fps=20)
                 cam_info = {
                     "backend": cam.backend,
@@ -191,32 +187,32 @@ class SystemCheck:
 
                 result["status"] = True
                 result["message"] = (
-                    f"Wirtualna kamera działa poprawnie (backend: {cam_info['backend']})"
+                    f"Virtual camera is working correctly (backend: {cam_info['backend']})"
                 )
                 result["details"].update(cam_info)
                 self._log(result["message"])
 
             except Exception as e:
                 result["status"] = False
-                result["message"] = f"Błąd podczas sprawdzania wirtualnej kamery: {str(e)}"
+                result["message"] = f"Error during virtual camera check: {str(e)}"
                 result["details"]["error"] = str(e)
                 self._log(result["message"], level="WARNING")
 
-                # Dodajemy sugestie w zależności od systemu
+                # Add suggestions depending on system
                 if self.system == "Windows":
                     if "OBS" in str(e):
                         result["details"][
                             "suggestion"
-                        ] = "Zainstaluj OBS Studio i uruchom Virtual Camera"
+                        ] = "Install OBS Studio and start Virtual Camera"
                         result["details"]["install_link"] = self.install_links["obs"]
                 elif self.system == "Linux":
                     if "v4l2loopback" in str(e):
-                        result["details"]["suggestion"] = "Zainstaluj i załaduj moduł v4l2loopback"
+                        result["details"]["suggestion"] = "Install and load v4l2loopback module"
                         result["details"]["install_link"] = self.install_links["v4l2loopback"]
                 elif self.system == "Darwin":  # macOS
                     result["details"][
                         "suggestion"
-                    ] = "Zainstaluj OBS Studio i plugin obs-mac-virtualcam"
+                    ] = "Install OBS Studio and obs-mac-virtualcam plugin"
                     result["details"]["install_link_obs"] = self.install_links["obs"]
                     result["details"]["install_link_plugin"] = self.install_links[
                         "obs_virtualcam_plugin_mac"
@@ -224,7 +220,7 @@ class SystemCheck:
 
         except Exception as e:
             result["status"] = False
-            result["message"] = f"Błąd podczas sprawdzania wirtualnej kamery: {str(e)}"
+            result["message"] = f"Error during virtual camera check: {str(e)}"
             result["details"]["error"] = str(e)
             self._log(result["message"], level="ERROR")
 
@@ -232,46 +228,46 @@ class SystemCheck:
 
     def check_mediapipe(self) -> Dict[str, Any]:
         """
-        Sprawdza, czy MediaPipe jest dostępny i działa poprawnie.
+        Checks if MediaPipe is available and working correctly.
 
         Returns:
-            Dict[str, Any]: Wynik sprawdzenia
+            Dict[str, Any]: Check result
         """
-        self._log("Sprawdzanie MediaPipe...")
+        self._log("Checking MediaPipe...")
 
         result = self.results["mediapipe"]
 
         if not MEDIAPIPE_AVAILABLE:
             result["status"] = False
-            result["message"] = "Biblioteka MediaPipe nie jest zainstalowana"
+            result["message"] = "MediaPipe library is not installed"
             result["details"]["install_command"] = "pip install mediapipe"
             result["details"]["install_link"] = self.install_links["mediapipe"]
             self._log(result["message"], level="WARNING")
             return result
 
         try:
-            # Próba utworzenia detektora pozy
+            # Attempt to create pose detector
             mp_pose = mp.solutions.pose
             pose = mp_pose.Pose(
                 static_image_mode=True,
-                model_complexity=0,  # Używamy najprostszego modelu dla testu
+                model_complexity=0,  # Use simplest model for test
                 min_detection_confidence=0.5,
             )
 
-            # Sprawdzenie wersji MediaPipe
+            # Check MediaPipe version
             mp_version = mp.__version__
 
             result["status"] = True
-            result["message"] = f"MediaPipe działa poprawnie (wersja: {mp_version})"
+            result["message"] = f"MediaPipe is working correctly (version: {mp_version})"
             result["details"]["version"] = mp_version
             self._log(result["message"])
 
-            # Zamknięcie detektora
+            # Close detector
             pose.close()
 
         except Exception as e:
             result["status"] = False
-            result["message"] = f"Błąd podczas sprawdzania MediaPipe: {str(e)}"
+            result["message"] = f"Error during MediaPipe check: {str(e)}"
             result["details"]["error"] = str(e)
             self._log(result["message"], level="ERROR")
 
@@ -279,27 +275,27 @@ class SystemCheck:
 
     def check_obs(self) -> Dict[str, Any]:
         """
-        Sprawdza, czy OBS Studio jest zainstalowany (tylko Windows/macOS).
+        Checks if OBS Studio is installed (only Windows/macOS).
 
         Returns:
-            Dict[str, Any]: Wynik sprawdzenia
+            Dict[str, Any]: Check result
         """
-        self._log("Sprawdzanie OBS Studio...")
+        self._log("Checking OBS Studio...")
 
         result = self.results["obs"]
 
-        # Sprawdzamy tylko na Windows i macOS
+        # Check only on Windows and macOS
         if self.system not in ["Windows", "Darwin"]:
             result["status"] = None
-            result["message"] = "Sprawdzanie OBS pominięte - nieobsługiwany system"
+            result["message"] = "OBS check skipped - unsupported system"
             return result
 
         try:
-            # Ścieżki instalacyjne OBS
+            # OBS installation paths
             obs_paths = []
 
             if self.system == "Windows":
-                # Typowe lokalizacje na Windows
+                # Typical Windows locations
                 program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
                 program_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
 
@@ -308,7 +304,7 @@ class SystemCheck:
                     os.path.join(program_files_x86, "obs-studio"),
                 ]
 
-                # Dla Steam
+                # For Steam
                 steam_path = os.path.join(
                     program_files, "Steam", "steamapps", "common", "obs-studio"
                 )
@@ -316,10 +312,10 @@ class SystemCheck:
                     obs_paths.append(steam_path)
 
             elif self.system == "Darwin":  # macOS
-                # Typowe lokalizacje na macOS
+                # Typical macOS locations
                 obs_paths = ["/Applications/OBS.app", os.path.expanduser("~/Applications/OBS.app")]
 
-            # Sprawdzenie, czy OBS istnieje w którejś z lokalizacji
+            # Check if OBS exists in any location
             obs_installed = False
             obs_location = None
 
@@ -331,18 +327,18 @@ class SystemCheck:
 
             if obs_installed:
                 result["status"] = True
-                result["message"] = "OBS Studio jest zainstalowany"
+                result["message"] = "OBS Studio is installed"
                 result["details"]["location"] = obs_location
                 self._log(result["message"])
             else:
                 result["status"] = False
-                result["message"] = "OBS Studio nie jest zainstalowany"
+                result["message"] = "OBS Studio is not installed"
                 result["details"]["install_link"] = self.install_links["obs"]
                 self._log(result["message"], level="WARNING")
 
         except Exception as e:
             result["status"] = None
-            result["message"] = f"Błąd podczas sprawdzania OBS: {str(e)}"
+            result["message"] = f"Error during OBS check: {str(e)}"
             result["details"]["error"] = str(e)
             self._log(result["message"], level="ERROR")
 
@@ -350,30 +346,30 @@ class SystemCheck:
 
     def check_v4l2loopback(self) -> Dict[str, Any]:
         """
-        Sprawdza, czy moduł v4l2loopback jest zainstalowany i załadowany (tylko Linux).
+        Checks if v4l2loopback module is installed and loaded (only Linux).
 
         Returns:
-            Dict[str, Any]: Wynik sprawdzenia
+            Dict[str, Any]: Check result
         """
-        self._log("Sprawdzanie modułu v4l2loopback...")
+        self._log("Checking v4l2loopback module...")
 
         result = self.results["v4l2loopback"]
 
-        # Sprawdzamy tylko na Linuxie
+        # Check only on Linux
         if self.system != "Linux":
             result["status"] = None
-            result["message"] = "Sprawdzanie v4l2loopback pominięte - nieobsługiwany system"
+            result["message"] = "v4l2loopback check skipped - unsupported system"
             return result
 
         try:
-            # Sprawdzenie, czy moduł jest załadowany
+            # Check if module is loaded
             module_loaded = False
             loaded_modules = subprocess.check_output(["lsmod"]).decode("utf-8")
 
             if "v4l2loopback" in loaded_modules:
                 module_loaded = True
 
-            # Sprawdzenie, czy istnieją urządzenia wirtualnej kamery
+            # Check if virtual camera devices exist
             v4l_devices = []
 
             try:
@@ -386,12 +382,12 @@ class SystemCheck:
 
             if module_loaded:
                 result["status"] = True
-                result["message"] = "Moduł v4l2loopback jest załadowany"
+                result["message"] = "v4l2loopback module is loaded"
                 result["details"]["devices"] = len(v4l_devices)
                 self._log(result["message"])
             else:
                 result["status"] = False
-                result["message"] = "Moduł v4l2loopback nie jest załadowany"
+                result["message"] = "v4l2loopback module is not loaded"
                 result["details"]["install_command"] = "sudo apt-get install v4l2loopback-dkms"
                 result["details"]["load_command"] = "sudo modprobe v4l2loopback"
                 result["details"]["install_link"] = self.install_links["v4l2loopback"]
@@ -399,7 +395,7 @@ class SystemCheck:
 
         except Exception as e:
             result["status"] = None
-            result["message"] = f"Błąd podczas sprawdzania v4l2loopback: {str(e)}"
+            result["message"] = f"Error during v4l2loopback check: {str(e)}"
             result["details"]["error"] = str(e)
             self._log(result["message"], level="ERROR")
 
@@ -407,15 +403,15 @@ class SystemCheck:
 
     def get_missing_components(self) -> List[Dict[str, Any]]:
         """
-        Zwraca listę brakujących lub niepoprawnie skonfigurowanych komponentów.
+        Returns list of missing or incorrectly configured components.
 
         Returns:
-            List[Dict[str, Any]]: Lista brakujących komponentów z informacjami
+            List[Dict[str, Any]]: List of missing components with information
         """
         missing = []
 
         for component, result in self.results.items():
-            if result["status"] is False:  # Pomijamy None (nieobsługiwane) i True (OK)
+            if result["status"] is False:  # Skip None (unsupported) and True (OK)
                 missing.append(
                     {"name": component, "message": result["message"], "details": result["details"]}
                 )
@@ -424,12 +420,12 @@ class SystemCheck:
 
     def are_all_requirements_met(self) -> bool:
         """
-        Sprawdza, czy wszystkie wymagane komponenty są dostępne.
+        Checks if all required components are available.
 
         Returns:
-            bool: True jeśli wszystkie wymagania są spełnione
+            bool: True if all requirements are met
         """
-        # Sprawdzamy tylko komponenty wymagane dla danego systemu
+        # Check only components required for given system
         required_components = ["camera", "virtual_camera", "mediapipe"]
 
         if self.system == "Windows":
@@ -445,65 +441,65 @@ class SystemCheck:
 
     def get_installation_instructions(self) -> Dict[str, List[str]]:
         """
-        Generuje instrukcje instalacji dla brakujących komponentów.
+        Generates installation instructions for missing components.
 
         Returns:
-            Dict[str, List[str]]: Słownik instrukcji dla różnych komponentów
+            Dict[str, List[str]]: Dictionary of instructions for different components
         """
         instructions = {}
 
-        # Instrukcje dla kamery
+        # Camera instructions
         if not self.results["camera"]["status"]:
             instructions["camera"] = [
-                "Sprawdź, czy kamera jest podłączona i działa poprawnie.",
-                "Upewnij się, że żadna inna aplikacja nie używa kamery.",
-                "Sprawdź ustawienia prywatności systemu i uprawnienia aplikacji do korzystania z kamery.",
+                "Check if camera is connected and working correctly.",
+                "Make sure no other application is using the camera.",
+                "Check system privacy settings and application permissions to use camera.",
             ]
 
-        # Instrukcje dla wirtualnej kamery
+        # Virtual camera instructions
         if not self.results["virtual_camera"]["status"]:
             if self.system == "Windows":
                 instructions["virtual_camera"] = [
-                    f"Zainstaluj OBS Studio: {self.install_links['obs']}",
-                    "Uruchom OBS Studio i włącz Virtual Camera (Narzędzia -> Start Virtual Camera)",
-                    "Jeśli już masz OBS, upewnij się, że Virtual Camera jest włączona",
+                    f"Install OBS Studio: {self.install_links['obs']}",
+                    "Run OBS Studio and enable Virtual Camera (Tools -> Start Virtual Camera)",
+                    "If you already have OBS, make sure Virtual Camera is enabled",
                 ]
             elif self.system == "Linux":
                 instructions["virtual_camera"] = [
-                    f"Zainstaluj v4l2loopback: {self.install_links['v4l2loopback']}",
-                    "Instalacja przez apt: sudo apt-get install v4l2loopback-dkms",
-                    "Załaduj moduł: sudo modprobe v4l2loopback",
+                    f"Install v4l2loopback: {self.install_links['v4l2loopback']}",
+                    "Install via apt: sudo apt-get install v4l2loopback-dkms",
+                    "Load module: sudo modprobe v4l2loopback",
                 ]
             elif self.system == "Darwin":  # macOS
                 instructions["virtual_camera"] = [
-                    f"Zainstaluj OBS Studio: {self.install_links['obs']}",
-                    f"Zainstaluj plugin obs-mac-virtualcam: {self.install_links['obs_virtualcam_plugin_mac']}",
-                    "Uruchom OBS Studio i włącz Virtual Camera (Narzędzia -> Start Virtual Camera)",
+                    f"Install OBS Studio: {self.install_links['obs']}",
+                    f"Install obs-mac-virtualcam plugin: {self.install_links['obs_virtualcam_plugin_mac']}",
+                    "Run OBS Studio and enable Virtual Camera (Tools -> Start Virtual Camera)",
                 ]
 
-        # Instrukcje dla MediaPipe
+        # MediaPipe instructions
         if not self.results["mediapipe"]["status"]:
             instructions["mediapipe"] = [
-                f"Zainstaluj bibliotekę MediaPipe: pip install mediapipe",
-                f"Więcej informacji: {self.install_links['mediapipe']}",
+                f"Install MediaPipe library: pip install mediapipe",
+                f"More information: {self.install_links['mediapipe']}",
             ]
 
-            # Dodatkowe informacje dla Python 3.11+ gdzie MediaPipe może mieć problemy
+            # Additional information for Python 3.11+ where MediaPipe may have issues
             if sys.version_info.major == 3 and sys.version_info.minor >= 11:
                 instructions["mediapipe"].append(
-                    "MediaPipe może mieć problemy z kompatybilnością z Python 3.11+. "
-                    "Rozważ użycie Python 3.9 lub 3.10."
+                    "MediaPipe may have compatibility issues with Python 3.11+. "
+                    "Consider using Python 3.9 or 3.10."
                 )
 
         return instructions
 
     def _log(self, message: str, level: str = "INFO") -> None:
         """
-        Zapisuje komunikat w loggerze, jeśli jest dostępny.
+        Logs message to logger if available.
 
         Args:
-            message (str): Komunikat do zapisania
-            level (str): Poziom logowania ("INFO", "WARNING", "ERROR", "DEBUG")
+            message (str): Message to log
+            level (str): Logging level ("INFO", "WARNING", "ERROR", "DEBUG")
         """
         if self.logger is None:
             return
@@ -513,16 +509,16 @@ class SystemCheck:
             method("SystemCheck", message)
 
 
-# Funkcja do wykorzystania w main.py
+# Function for use in main.py
 def check_system_requirements(logger=None) -> Tuple[bool, Dict[str, Any]]:
     """
-    Sprawdza, czy system spełnia wymagania aplikacji.
+    Checks if system meets application requirements.
 
     Args:
-        logger: Opcjonalny logger do zapisywania wyników sprawdzeń
+        logger: Optional logger for recording check results
 
     Returns:
-        Tuple[bool, Dict[str, Any]]: (True jeśli wszystkie wymagania są spełnione, wyniki sprawdzeń)
+        Tuple[bool, Dict[str, Any]]: (True if all requirements are met, check results)
     """
     checker = SystemCheck(logger)
     checker.check_all()

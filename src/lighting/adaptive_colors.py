@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 # src/lighting/adaptive_colors.py
 """
-Moduł analizy oświetlenia i adaptacyjnego dostosowywania kolorów.
-Dba o to, by kolory tła i stick figure dostosowywały się do warunków oświetleniowych
-otoczenia, zachowując stały poziom kontrastu.
+Lighting analysis and adaptive color adjustment module.
+Ensures that background and stick figure colors adapt to environmental lighting conditions
+while maintaining consistent contrast levels.
 """
 
 import time
@@ -18,100 +18,100 @@ from src.utils.custom_logger import CustomLogger
 
 class AdaptiveLightingManager:
     """
-    Klasa zarządzająca adaptacyjnym dostosowywaniem kolorów do warunków oświetleniowych.
+    Class managing adaptive color adjustment to lighting conditions.
     """
 
     def __init__(
         self,
-        adaptation_speed: float = 0.02,  # Bardzo powolna adaptacja (0.0-1.0)
-        smoothing_window: int = 30,  # Okno wygładzania (liczba klatek)
-        min_brightness: int = 20,  # Minimalna jasność tła (0-255)
-        max_brightness: int = 250,  # Maksymalna jasność tła (0-255)
-        min_contrast: float = 0.4,  # Minimalny kontrast (0.0-1.0)
-        sampling_interval: int = 5,  # Co ile klatek pobierać próbkę (oszczędność CPU)
+        adaptation_speed: float = 0.02,  # Very slow adaptation (0.0-1.0)
+        smoothing_window: int = 30,  # Smoothing window (number of frames)
+        min_brightness: int = 20,  # Minimum background brightness (0-255)
+        max_brightness: int = 250,  # Maximum background brightness (0-255)
+        min_contrast: float = 0.4,  # Minimum contrast (0.0-1.0)
+        sampling_interval: int = 5,  # How often to sample frames (CPU saving)
         logger: Optional[CustomLogger] = None,
     ):
         """
-        Inicjalizacja managera adaptacyjnego oświetlenia.
+        Initializes adaptive lighting manager.
 
         Args:
-            adaptation_speed (float): Szybkość adaptacji kolorów (0.0-1.0)
-            smoothing_window (int): Liczba klatek używana do wygładzania zmian
-            min_brightness (int): Minimalna jasność tła (0-255)
-            max_brightness (int): Maksymalna jasność tła (0-255)
-            min_contrast (float): Minimalny kontrast między tłem a konturami (0.0-1.0)
-            sampling_interval (int): Co ile klatek analizować jasność (oszczędność CPU)
-            logger (CustomLogger, optional): Logger do zapisywania komunikatów
+            adaptation_speed (float): Color adaptation speed (0.0-1.0)
+            smoothing_window (int): Number of frames used for smoothing changes
+            min_brightness (int): Minimum background brightness (0-255)
+            max_brightness (int): Maximum background brightness (0-255)
+            min_contrast (float): Minimum contrast between background and contours (0.0-1.0)
+            sampling_interval (int): How often to analyze brightness (CPU saving)
+            logger (CustomLogger, optional): Logger for recording messages
         """
         self.logger = logger or CustomLogger()
 
-        # Parametry adaptacji
-        self.adaptation_speed = max(0.001, min(0.1, adaptation_speed))  # Ograniczamy zakres
+        # Adaptation parameters
+        self.adaptation_speed = max(0.001, min(0.1, adaptation_speed))  # Limit range
         self.smoothing_window = smoothing_window
         self.min_brightness = min_brightness
         self.max_brightness = max_brightness
         self.min_contrast = min_contrast
         self.sampling_interval = max(1, sampling_interval)
 
-        # Stan wewnętrzny
+        # Internal state
         self.brightness_history: List[float] = []
         self.current_frame_index = 0
-        self.current_bg_color = (255, 255, 255)  # Domyślnie białe tło (BGR)
-        self.current_figure_color = (0, 0, 0)  # Domyślnie czarny kontur (BGR)
+        self.current_bg_color = (255, 255, 255)  # Default white background (BGR)
+        self.current_figure_color = (0, 0, 0)  # Default black contour (BGR)
         self.target_bg_brightness = 255
         self.last_update_time = time.time()
 
         self.logger.info(
             "AdaptiveLighting",
-            f"Inicjalizacja managera adaptacyjnego oświetlenia (szybkość={adaptation_speed}, "
-            f"okno={smoothing_window}, min_brightness={min_brightness})",
+            f"Initializing adaptive lighting manager (speed={adaptation_speed}, "
+            f"window={smoothing_window}, min_brightness={min_brightness})",
             log_type="LIGHTING",
         )
 
     def analyze_frame(self, frame: np.ndarray) -> float:
         """
-        Analizuje jasność klatki wideo.
+        Analyzes video frame brightness.
 
         Args:
-            frame (np.ndarray): Klatka wejściowa (BGR)
+            frame (np.ndarray): Input frame (BGR)
 
         Returns:
-            float: Średnia jasność klatki (0.0-1.0)
+            float: Average frame brightness (0.0-1.0)
         """
-        # Inkrementacja licznika klatek
+        # Increment frame counter
         self.current_frame_index += 1
 
-        # Analizujemy tylko co X-tą klatkę dla oszczędności CPU
+        # Analyze only every X-th frame for CPU saving
         if self.current_frame_index % self.sampling_interval != 0:
-            # Zwracamy ostatnią znaną wartość, jeśli dostępna
+            # Return last known value if available
             if self.brightness_history:
                 return self.brightness_history[-1]
-            return 0.5  # Wartość domyślna
+            return 0.5  # Default value
 
         try:
-            # Konwersja do skali szarości
+            # Convert to grayscale
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            # Obliczenie średniej jasności (normalizacja do 0.0-1.0)
+            # Calculate average brightness (normalized to 0.0-1.0)
             mean_brightness = np.mean(gray) / 255.0
 
-            # Dodanie do historii
+            # Add to history
             self.brightness_history.append(mean_brightness)
 
-            # Ograniczenie rozmiaru historii
+            # Limit history size
             if len(self.brightness_history) > self.smoothing_window:
                 self.brightness_history.pop(0)
 
-            # Wygładzona wartość (średnia z historii)
+            # Smoothed value (average from history)
             smoothed_brightness = np.mean(self.brightness_history)
 
             return smoothed_brightness
 
         except Exception as e:
             self.logger.error(
-                "AdaptiveLighting", f"Błąd podczas analizy jasności: {str(e)}", log_type="LIGHTING"
+                "AdaptiveLighting", f"Error during brightness analysis: {str(e)}", log_type="LIGHTING"
             )
-            # Zwracamy ostatnią znaną wartość, lub wartość domyślną
+            # Return last known value, or default value
             if self.brightness_history:
                 return self.brightness_history[-1]
             return 0.5
@@ -120,49 +120,49 @@ class AdaptiveLightingManager:
         self, frame_brightness: float
     ) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
         """
-        Aktualizuje kolory tła i konturu na podstawie jasności otoczenia.
-        Zachowuje stały kontrast pomiędzy tłem a konturem.
+        Updates background and contour colors based on environmental brightness.
+        Maintains constant contrast between background and contour.
 
         Args:
-            frame_brightness (float): Jasność otoczenia (0.0-1.0)
+            frame_brightness (float): Environmental brightness (0.0-1.0)
 
         Returns:
             Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
-                - kolor tła (BGR)
-                - kolor konturu (BGR)
+                - background color (BGR)
+                - contour color (BGR)
         """
-        # Obliczamy docelową jasność tła na podstawie jasności otoczenia
-        # Odwracamy skalę - im jaśniejsze otoczenie, tym jaśniejsze tło
+        # Calculate target background brightness based on environmental brightness
+        # Invert scale - brighter environment means brighter background
         target_bg_value = self.min_brightness + frame_brightness * (
             self.max_brightness - self.min_brightness
         )
 
-        # Płynna adaptacja do docelowej wartości
+        # Smooth adaptation to target value
         current_time = time.time()
         elapsed_time = current_time - self.last_update_time
         adaptation_factor = min(1.0, elapsed_time * self.adaptation_speed * 10)
 
-        # Aktualizacja docelowej jasności z uwzględnieniem współczynnika adaptacji
+        # Update target brightness considering adaptation factor
         self.target_bg_brightness = (
             self.target_bg_brightness * (1 - adaptation_factor)
             + target_bg_value * adaptation_factor
         )
 
-        # Ograniczenie do zakresu
+        # Limit to range
         self.target_bg_brightness = max(
             self.min_brightness, min(self.max_brightness, self.target_bg_brightness)
         )
 
-        # Konwersja do koloru BGR
+        # Convert to BGR color
         bg_color_value = int(self.target_bg_brightness)
-        bg_color = (bg_color_value, bg_color_value, bg_color_value)  # Odcień szarości (BGR)
+        bg_color = (bg_color_value, bg_color_value, bg_color_value)  # Grayscale shade (BGR)
 
-        # Obliczamy kolor konturu - odwrotny do tła, ale z zachowaniem kontrastu
-        # Im jaśniejsze tło, tym ciemniejszy kontur i odwrotnie
+        # Calculate contour color - inverse of background, but maintaining contrast
+        # Brighter background means darker contour and vice versa
         contour_value = self._calculate_contrasting_value(bg_color_value)
-        figure_color = (contour_value, contour_value, contour_value)  # Odcień szarości (BGR)
+        figure_color = (contour_value, contour_value, contour_value)  # Grayscale shade (BGR)
 
-        # Aktualizujemy stan
+        # Update state
         self.current_bg_color = bg_color
         self.current_figure_color = figure_color
         self.last_update_time = current_time
@@ -171,38 +171,38 @@ class AdaptiveLightingManager:
 
     def _calculate_contrasting_value(self, bg_value: int) -> int:
         """
-        Oblicza wartość koloru konturu kontrastującą z tłem.
+        Calculates contour color value contrasting with background.
 
         Args:
-            bg_value (int): Wartość jasności tła (0-255)
+            bg_value (int): Background brightness value (0-255)
 
         Returns:
-            int: Wartość jasności konturu (0-255)
+            int: Contour brightness value (0-255)
         """
-        # Punkt środkowy skali jasności
+        # Midpoint of brightness scale
         mid_point = 127.5
 
-        # Obliczamy względną jasność tła (-1.0 do 1.0 gdzie 0 to środek skali)
+        # Calculate relative background brightness (-1.0 to 1.0 where 0 is scale midpoint)
         relative_brightness = (bg_value - mid_point) / mid_point
 
-        # Odwracamy i skalujemy, zachowując minimalny kontrast
+        # Invert and scale, maintaining minimum contrast
         contrast_factor = max(self.min_contrast, abs(relative_brightness) + self.min_contrast)
 
         if bg_value > mid_point:
-            # Dla jasnego tła - ciemny kontur
+            # For bright background - dark contour
             contour_value = max(0, int(bg_value * (1.0 - contrast_factor)))
         else:
-            # Dla ciemnego tła - jasny kontur
+            # For dark background - bright contour
             contour_value = min(255, int(bg_value * (1.0 + contrast_factor)))
 
         return contour_value
 
     def get_current_colors(self) -> Dict[str, Tuple[int, int, int]]:
         """
-        Zwraca aktualnie używane kolory.
+        Returns currently used colors.
 
         Returns:
-            Dict[str, Tuple[int, int, int]]: Słownik z kolorami
+            Dict[str, Tuple[int, int, int]]: Dictionary with colors
         """
         return {
             "bg_color": self.current_bg_color,
@@ -212,7 +212,7 @@ class AdaptiveLightingManager:
 
     def reset(self) -> None:
         """
-        Resetuje stan managera.
+        Resets manager state.
         """
         self.brightness_history = []
         self.current_frame_index = 0
