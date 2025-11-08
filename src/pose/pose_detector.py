@@ -126,9 +126,7 @@ class PoseDetector:
             min_tracking_confidence=min_tracking_confidence,
         )
 
-        self.logger.info(
-            "PoseDetector", "MediaPipe Pose initialized successfully", log_type="POSE"
-        )
+        self.logger.info("PoseDetector", "MediaPipe Pose initialized successfully", log_type="POSE")
 
     def detect_pose(self, image: np.ndarray) -> Tuple[bool, Dict[str, Any]]:
         """

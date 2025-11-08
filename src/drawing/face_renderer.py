@@ -61,9 +61,7 @@ class SimpleFaceRenderer:
         self.expressions_history: List[Dict[str, float]] = []
         self.expressions_history_size = 5  # Number of frames to average
 
-        self.logger.info(
-            "SimpleFaceRenderer", "Face renderer initialized", log_type="DRAWING"
-        )
+        self.logger.info("SimpleFaceRenderer", "Face renderer initialized", log_type="DRAWING")
 
     def draw_face(
         self,
@@ -441,6 +439,4 @@ class SimpleFaceRenderer:
         self.expressions_history = []
         self.frame_count = 0
 
-        self.logger.debug(
-            "SimpleFaceRenderer", "Face renderer state reset", log_type="DRAWING"
-        )
+        self.logger.debug("SimpleFaceRenderer", "Face renderer state reset", log_type="DRAWING")

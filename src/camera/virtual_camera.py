@@ -117,28 +117,28 @@ class VirtualCamera:
         if self.system == "Windows":
             return (
                 base_msg + "Make sure OBS Studio is installed and Virtual Camera is started:\n"
-                           "1. Install OBS Studio from https://obsproject.com\n"
-                           "2. Open OBS Studio\n"
-                           "3. Go to Tools → Start Virtual Camera\n"
-                           "4. Try running this application again"
+                "1. Install OBS Studio from https://obsproject.com\n"
+                "2. Open OBS Studio\n"
+                "3. Go to Tools → Start Virtual Camera\n"
+                "4. Try running this application again"
             )
 
         elif self.system == "Linux":
             return (
                 base_msg + "Make sure v4l2loopback kernel module is loaded:\n"
-                           "1. Install: sudo apt-get install v4l2loopback-dkms\n"
-                           "2. Load module: sudo modprobe v4l2loopback\n"
-                           "3. Verify: ls /dev/video*\n"
-                           "4. Try running this application again"
+                "1. Install: sudo apt-get install v4l2loopback-dkms\n"
+                "2. Load module: sudo modprobe v4l2loopback\n"
+                "3. Verify: ls /dev/video*\n"
+                "4. Try running this application again"
             )
 
         else:  # macOS
             return (
                 base_msg + "Make sure OBS Studio with virtual camera plugin is installed:\n"
-                           "1. Install OBS Studio from https://obsproject.com\n"
-                           "2. Install obs-mac-virtualcam plugin\n"
-                           "3. Open OBS and start Virtual Camera\n"
-                           "4. Try running this application again"
+                "1. Install OBS Studio from https://obsproject.com\n"
+                "2. Install obs-mac-virtualcam plugin\n"
+                "3. Open OBS and start Virtual Camera\n"
+                "4. Try running this application again"
             )
 
     def send(self, frame: np.ndarray):

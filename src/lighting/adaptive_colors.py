@@ -109,7 +109,9 @@ class AdaptiveLightingManager:
 
         except Exception as e:
             self.logger.error(
-                "AdaptiveLighting", f"Error during brightness analysis: {str(e)}", log_type="LIGHTING"
+                "AdaptiveLighting",
+                f"Error during brightness analysis: {str(e)}",
+                log_type="LIGHTING",
             )
             # Return last known value, or default value
             if self.brightness_history:

@@ -411,9 +411,7 @@ class PostureAnalyzer:
         elif visible_parts == 3:
             return 0.2  # Decreased value
         else:  # visible_parts == 4
-            return (
-                0.05  # Even lower sitting probability when all leg parts visible
-            )
+            return 0.05  # Even lower sitting probability when all leg parts visible
 
     def _analyze_torso_proportion(
         self, landmarks: List[Tuple[float, float, float, float]]
@@ -583,9 +581,7 @@ class PostureAnalyzer:
         self.consecutive_frames = 0
         self.last_visible_keypoints_count = 0
 
-        self.logger.debug(
-            "PostureAnalyzer", "Posture analyzer state reset", log_type="POSE"
-        )
+        self.logger.debug("PostureAnalyzer", "Posture analyzer state reset", log_type="POSE")
 
     def get_current_posture(self) -> Dict[str, Any]:
         """
