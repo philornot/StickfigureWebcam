@@ -122,17 +122,12 @@ class StickfigureWebcam:
                 self.width,
                 self.height,
                 mouth_open,
-                draw_debug_markers=False
+                draw_debug_markers=False  # Always false for clean main view
             )
         else:
             draw_no_person_message(canvas, self.width, self.height)
 
-        # Add debug info if enabled
-        if self.debug_mode:
-            current_fps = self.fps_counter.get_fps()
-            draw_debug_info(canvas, current_fps, mouth_open, self.width, self.height)
-            draw_debug_mode_indicator(canvas, self.height)
-
+        # Do NOT draw any debug overlays here to keep main window clean.
         return canvas
 
     def render_debug_view(self, frame, pose_results, face_results, mouth_open):
@@ -181,7 +176,7 @@ class StickfigureWebcam:
             # Update FPS
             self.fps_counter.update()
 
-            # Render main stickfigure view
+            # Render main stickfigure view (always clean)
             stickfigure_canvas = self.render_stickfigure_view(pose_results, mouth_open)
             cv2.imshow(config.WINDOW_NAME_STICKFIGURE, stickfigure_canvas)
 
