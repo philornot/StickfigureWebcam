@@ -170,7 +170,30 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False):
                      color, 2)
 
         # TORSO
-        cv2.line(canvas, left_shoulder, right_shoulder, color, thickness)
+        # Draw curved shoulder line instead of straight line
+        # Calculate control point for the curve (slightly below shoulder center)
+        shoulder_curve_depth = int(shoulder_width * 0.15)
+        control_point = (shoulder_center[0], shoulder_center[1] + shoulder_curve_depth)
+
+        # Create curved shoulder using quadratic bezier curve
+        num_points = 20
+        shoulder_curve_points = []
+        for i in range(num_points + 1):
+            t = i / num_points
+            # Quadratic Bezier formula: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+            x = int((1 - t) ** 2 * left_shoulder[0] +
+                    2 * (1 - t) * t * control_point[0] +
+                    t ** 2 * right_shoulder[0])
+            y = int((1 - t) ** 2 * left_shoulder[1] +
+                    2 * (1 - t) * t * control_point[1] +
+                    t ** 2 * right_shoulder[1])
+            shoulder_curve_points.append([x, y])
+
+        # Draw the curved shoulder line
+        shoulder_curve_points = np.array(shoulder_curve_points, np.int32)
+        cv2.polylines(canvas, [shoulder_curve_points], False, color, thickness)
+
+        # Spine and hips
         cv2.line(canvas, shoulder_center, hip_center, color, thickness)
         cv2.line(canvas, left_hip, right_hip, color, thickness)
 
