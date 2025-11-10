@@ -9,13 +9,15 @@ to applications like Zoom, Teams, etc.
 import numpy as np
 import pyvirtualcam
 
+import config
+
 
 class VirtualCameraOutput:
     """
     Wrapper for pyvirtualcam that sends frames to virtual camera.
     """
 
-    def __init__(self, width, height, fps=30):
+    def __init__(self, width, height, fps=30, mirror=None):
         """
         Initialize virtual camera output.
 
@@ -23,12 +25,14 @@ class VirtualCameraOutput:
             width: Frame width in pixels
             height: Frame height in pixels
             fps: Target frame rate (default: 30)
+            mirror: Optional bool to force mirroring; if None, uses config.VCAM_MIRROR_OUTPUT
         """
         self.width = width
         self.height = height
         self.fps = fps
         self.camera = None
         self.is_active = False
+        self.mirror = config.VCAM_MIRROR_OUTPUT if mirror is None else bool(mirror)
 
     def start(self):
         """
@@ -54,6 +58,11 @@ class VirtualCameraOutput:
             print("  - Linux: v4l2loopback")
             return False
 
+    def set_mirror(self, enabled: bool):
+        """Enable/disable horizontal mirroring for outgoing frames."""
+        self.mirror = bool(enabled)
+        print(f"Virtual camera mirroring: {'ON' if self.mirror else 'OFF'}")
+
     def send_frame(self, frame):
         """
         Send a frame to the virtual camera.
@@ -68,6 +77,11 @@ class VirtualCameraOutput:
             return False
 
         try:
+            # Optional horizontal mirror so text reads correctly in apps that mirror preview
+            if self.mirror:
+                import cv2
+                frame = cv2.flip(frame, 1)
+
             # Convert BGR to RGB (OpenCV uses BGR, pyvirtualcam expects RGB)
             frame_rgb = frame[:, :, ::-1]
 

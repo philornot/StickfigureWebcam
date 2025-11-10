@@ -240,6 +240,7 @@ def print_startup_info(width, height):
     print("--------------------------")
     print(config.MESSAGE_QUIT)
     print(config.MESSAGE_DEBUG_KEY)
+    print(config.MESSAGE_MIRROR_KEY)
     print("--------------------------")
 
 

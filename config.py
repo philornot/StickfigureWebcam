@@ -88,7 +88,14 @@ WINDOW_NAME_STICKFIGURE = 'Stickfigure Webcam'
 WINDOW_NAME_DEBUG = 'Camera Debug'
 
 # -- UI Messages --
-MESSAGE_NO_PERSON = 'Stand in front of camera'
-MESSAGE_DEBUG_TOGGLE = 'Debug Mode (press D to toggle)'
+MESSAGE_NO_PERSON = 'Human target not found'
+MESSAGE_DEBUG_TOGGLE = 'Debug mode (press D to toggle)'
 MESSAGE_QUIT = 'Press \'q\' to quit'
 MESSAGE_DEBUG_KEY = 'Press \'d\' to toggle debug mode'
+MESSAGE_MIRROR_KEY = "Press 'm' to toggle mirroring for virtual camera (helps with apps that mirror preview)"
+
+# -- Virtual Camera Output Settings --
+# When True, the virtual camera image is horizontally mirrored.
+# Set to False if your app does not mirror the local preview, so text/logos stay readable.
+# Note: Apps handle local preview vs. transmitted video differently; choose what remote viewers should see.
+VCAM_MIRROR_OUTPUT = True

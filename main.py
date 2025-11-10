@@ -19,7 +19,6 @@ from stickfigure import draw_stickfigure
 from ui import (
     FPSCounter,
     draw_no_person_message,
-    draw_debug_mode_indicator,
     create_debug_overlay,
     print_startup_info,
     handle_key_press
@@ -73,7 +72,8 @@ class StickfigureWebcam:
         self.vcam = VirtualCameraOutput(
             self.width,
             self.height,
-            fps=config.CAMERA_FPS
+            fps=config.CAMERA_FPS,
+            mirror=config.VCAM_MIRROR_OUTPUT
         )
         self.vcam.start()
 
@@ -139,7 +139,7 @@ class StickfigureWebcam:
 
     def render_stickfigure_view(self, pose_results, mouth_open, eyes_closed):
         """
-        Render the main stickfigure view.
+        Render the main stickfigure view without any debug text even in debug mode.
 
         Args:
             pose_results: MediaPipe pose detection results
@@ -166,10 +166,7 @@ class StickfigureWebcam:
         else:
             draw_no_person_message(canvas, self.width, self.height)
 
-        # Draw debug mode indicator if active
-        if self.debug_mode:
-            draw_debug_mode_indicator(canvas, self.height)
-
+        # Debug indicator intentionally removed to keep window clean.
         return canvas
 
     def render_debug_view(self, frame, pose_results, face_results, mouth_open, eyes_closed):
@@ -239,6 +236,10 @@ class StickfigureWebcam:
             key = cv2.waitKey(1) & 0xFF
             should_quit, self.debug_mode = handle_key_press(key, self.debug_mode)
 
+            # Mirror toggle
+            if key == ord('m'):
+                self.vcam.set_mirror(not self.vcam.mirror)
+
             if should_quit:
                 break
 
@@ -258,6 +259,7 @@ def main():
     """
     Application entry point.
     """
+    app = None
     try:
         app = StickfigureWebcam()
         app.run()
@@ -266,7 +268,7 @@ def main():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
     finally:
-        if 'app' in locals():
+        if app is not None:
             app.cleanup()
 
 
