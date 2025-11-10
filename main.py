@@ -28,6 +28,7 @@ from ui import (
     handle_key_press
 )
 from virtual_camera import VirtualCameraOutput
+from camera_selector import show_camera_selector
 
 
 class StickfigureWebcam:
@@ -35,8 +36,12 @@ class StickfigureWebcam:
     Main application class for Stickfigure Webcam.
     """
 
-    def __init__(self):
-        """Initialize the application with all required components."""
+    def __init__(self, camera_id=None):
+        """Initialize the application.
+
+        Args:
+            camera_id: Optional camera ID. If None, will show selection dialog.
+        """
         self.mp_pose = mp.solutions.pose
         self.mp_face_mesh = mp.solutions.face_mesh
 
@@ -53,10 +58,17 @@ class StickfigureWebcam:
             min_tracking_confidence=config.FACE_MESH_MIN_TRACKING_CONFIDENCE
         )
 
-        # Initialize camera
-        self.cap = cv2.VideoCapture(config.CAMERA_ID)
+        # Determine camera ID
+        if camera_id is None:
+            camera_id = show_camera_selector(use_gui=True)
+            if camera_id is None:
+                raise RuntimeError("No camera selected")
+
+        # Initialize camera with selected ID
+        self.camera_id = camera_id
+        self.cap = cv2.VideoCapture(self.camera_id)
         if not self.cap.isOpened():
-            raise RuntimeError("Error: Cannot open camera")
+            raise RuntimeError(f"Error: Cannot open camera {self.camera_id}")
 
         # Configure camera
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
@@ -92,6 +104,7 @@ class StickfigureWebcam:
         self.vcam.start()
 
         print_startup_info(self.width, self.height)
+        print(f"Using camera: {self.camera_id}")
 
     def capture_frames(self):
         """Thread 1: Continuously capture frames from camera.
