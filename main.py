@@ -54,7 +54,7 @@ def calculate_mouth_openness(face_landmarks, width, height):
     return mouth_distance > threshold
 
 
-def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False):
+def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False, draw_debug_markers=False):
     """
     Draw a stick figure based on pose landmarks with natural proportions.
 
@@ -63,6 +63,7 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False):
     - Natural facial features
     - Smooth body proportions
     - Clear joint markers
+    - Optional debug markers showing detected landmark points
 
     Args:
         canvas: Numpy array to draw on
@@ -70,6 +71,7 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False):
         width: Canvas width
         height: Canvas height
         mouth_open: Whether mouth is open
+        draw_debug_markers: Whether to draw small markers at detected landmark positions
     """
     if not landmarks:
         return
@@ -222,8 +224,65 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False):
         for joint in joints:
             cv2.circle(canvas, joint, joint_radius, color, -1)
 
+        # DEBUG MARKERS - draw small markers at all detected landmark positions
+        if draw_debug_markers:
+            # Draw all 33 pose landmarks as small colored circles
+            for idx in range(33):
+                try:
+                    point = get_point(idx)
+                    # Different colors for different body parts
+                    if idx == 0:  # Nose
+                        marker_color = (255, 0, 255)  # Magenta
+                    elif idx in [11, 12, 13, 14, 15, 16]:  # Arms
+                        marker_color = (255, 255, 0)  # Cyan
+                    elif idx in [23, 24, 25, 26, 27, 28]:  # Legs
+                        marker_color = (0, 255, 255)  # Yellow
+                    else:  # Other points
+                        marker_color = (128, 128, 128)  # Gray
+
+                    cv2.circle(canvas, point, 3, marker_color, -1)
+                    # Draw landmark index number
+                    cv2.putText(canvas, str(idx),
+                                (point[0] + 5, point[1] - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.3,
+                                marker_color, 1)
+                except:
+                    pass
+
     except Exception as e:
         print(f"Error drawing stickfigure: {e}")
+
+
+def draw_face_landmarks(canvas, face_landmarks, width, height):
+    """
+    Draw face mesh landmarks for debugging.
+
+    Args:
+        canvas: Numpy array to draw on
+        face_landmarks: MediaPipe face mesh landmarks
+        width: Canvas width
+        height: Canvas height
+    """
+    if not face_landmarks:
+        return
+
+    # Draw key facial landmarks used for mouth detection
+    key_points = [13, 14, 78, 308, 87, 317, 10, 152]  # Lips + forehead + chin
+
+    for idx in key_points:
+        landmark = face_landmarks[idx]
+        x = int(landmark.x * width)
+        y = int(landmark.y * height)
+
+        # Color code: red for mouth points, green for face reference points
+        if idx in [13, 14, 78, 308, 87, 317]:
+            color = (0, 0, 255)  # Red for mouth
+        else:
+            color = (0, 255, 0)  # Green for reference points
+
+        cv2.circle(canvas, (x, y), 2, color, -1)
+        cv2.putText(canvas, str(idx), (x + 3, y - 3),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.25, color, 1)
 
 
 def main():
@@ -304,7 +363,8 @@ def main():
                 pose_results.pose_landmarks.landmark,
                 width,
                 height,
-                mouth_open
+                mouth_open,
+                draw_debug_markers=False
             )
         else:
             cv2.putText(
@@ -316,6 +376,65 @@ def main():
                 (255, 255, 255),
                 2
             )
+
+        # Create debug camera view if debug mode is enabled
+        if debug_mode:
+            debug_canvas = frame.copy()
+
+            # Draw stick figure overlay on camera feed
+            if pose_results.pose_landmarks:
+                draw_stickfigure(
+                    debug_canvas,
+                    pose_results.pose_landmarks.landmark,
+                    width,
+                    height,
+                    mouth_open,
+                    draw_debug_markers=True
+                )
+
+            # Draw face landmarks
+            if face_results.multi_face_landmarks:
+                draw_face_landmarks(
+                    debug_canvas,
+                    face_results.multi_face_landmarks[0].landmark,
+                    width,
+                    height
+                )
+
+            # Add debug overlay information
+            cv2.putText(
+                debug_canvas,
+                f'FPS: {current_fps:.1f}',
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+
+            mouth_status = "OPEN" if mouth_open else "CLOSED"
+            cv2.putText(
+                debug_canvas,
+                f'Mouth: {mouth_status}',
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 255),
+                2
+            )
+
+            cv2.putText(
+                debug_canvas,
+                'Debug Camera View',
+                (10, height - 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2
+            )
+
+            # Show debug camera window
+            cv2.imshow('Camera Debug', debug_canvas)
 
         # Calculate FPS
         fps_counter += 1
@@ -359,6 +478,29 @@ def main():
                 1
             )
 
+        # Display debug information if enabled
+        if debug_mode:
+            cv2.putText(
+                stickfigure_canvas,
+                f'FPS: {current_fps:.1f}',
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+
+            mouth_status = "OPEN" if mouth_open else "CLOSED"
+            cv2.putText(
+                stickfigure_canvas,
+                f'Mouth: {mouth_status}',
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 255),
+                2
+            )
+
         cv2.imshow('Stickfigure Webcam', stickfigure_canvas)
 
         # Handle key presses
@@ -368,6 +510,9 @@ def main():
         elif key == ord('d'):
             debug_mode = not debug_mode
             print(f"Debug mode: {'ON' if debug_mode else 'OFF'}")
+            # Close debug window when turning off debug mode
+            if not debug_mode:
+                cv2.destroyWindow('Camera Debug')
 
     pose.close()
     face_mesh.close()
