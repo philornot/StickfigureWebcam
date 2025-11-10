@@ -1,53 +1,101 @@
-"""Stick-figure pose visualizer using OpenCV and MediaPipe.
-
-Opens the default webcam, tracks human pose, and renders a simple stick figure
-on a separate black canvas next to the original camera feed. Press 'q' to quit.
-"""
-
 import cv2
 import mediapipe as mp
 import numpy as np
 
+"""Webcam stick figure application using MediaPipe Pose and Face Mesh.
 
-def draw_stickfigure(canvas, landmarks, width, height):
-    """Draw a simple stick figure based on MediaPipe pose landmarks.
+Draws a simplified stick figure based on pose landmarks and indicates mouth
+open state using Face Mesh landmarks.
+"""
 
-    The pose model provides 33 landmarks, but only the key joints are used:
-    0: nose
-    11, 12: shoulders (left, right)
-    13, 14: elbows
-    15, 16: wrists
-    23, 24: hips
-    25, 26: knees
-    27, 28: ankles
+
+def calculate_mouth_openness(face_landmarks, width, height):
+    """Determine whether the mouth is open based on Face Mesh landmarks.
+
+    Uses key landmarks:
+        13: upper lip (center)
+        14: lower lip (center)
 
     Args:
-        canvas: Numpy image array (H, W, 3) in BGR where the figure is drawn.
-        landmarks: Sequence of normalized landmarks with `.x` and `.y` in [0, 1].
-        width: Frame width in pixels.
-        height: Frame height in pixels.
+        face_landmarks (Sequence | None): List of face landmarks (FaceMeshResult.multi_face_landmarks[0].landmark) or None.
+        width (int): Frame width in pixels (reserved for future use).
+        height (int): Frame height in pixels.
 
     Returns:
-        None. Draws in-place on the provided canvas.
+        bool: True if mouth detected as open, False otherwise.
+    """
+    if not face_landmarks:
+        return False
+
+    # Lip landmarks
+    upper_lip = face_landmarks[13]
+    lower_lip = face_landmarks[14]
+
+    # Convert relative coordinates to pixel space
+    upper_y = upper_lip.y * height
+    lower_y = lower_lip.y * height
+
+    mouth_distance = abs(lower_y - upper_y)
+
+    # Threshold (tunable). If vertical distance > 15 px -> mouth open.
+    threshold = 15
+
+    return mouth_distance > threshold
+
+
+def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False):
+    """Draw a stick figure with optional mouth animation.
+
+    Args:
+        canvas (np.ndarray): Target BGR image to draw on.
+        landmarks (Sequence): Pose landmarks (pose_landmarks.landmark).
+        width (int): Frame width in pixels.
+        height (int): Frame height in pixels.
+        mouth_open (bool): Whether to render the mouth as open.
+
+    Raises:
+        Exception: If landmark access fails.
     """
     if not landmarks:
         return
 
-    # Map normalized coordinates [0..1] to pixel coordinates
     def get_point(idx):
         lm = landmarks[idx]
         x = int(lm.x * width)
         y = int(lm.y * height)
         return (x, y)
 
-    # Color and line thickness
-    color = (255, 255, 255)  # white
+    color = (255, 255, 255)
     thickness = 3
 
     try:
-        # HEAD - draw a circle around the nose
+        # HEAD (circle around nose landmark)
         nose = get_point(0)
-        cv2.circle(canvas, nose, 20, color, thickness)
+        head_radius = 20
+        cv2.circle(canvas, nose, head_radius, color, thickness)
+
+        # MOUTH (centered below nose)
+        mouth_y_offset = 10
+        mouth_center = (nose[0], nose[1] + mouth_y_offset)
+
+        if mouth_open:
+            # Open mouth - filled circle
+            cv2.circle(canvas, mouth_center, 5, color, -1)
+        else:
+            # Closed mouth - line
+            cv2.line(
+                canvas,
+                (mouth_center[0] - 6, mouth_center[1]),
+                (mouth_center[0] + 6, mouth_center[1]),
+                color,
+                2,
+            )
+
+        # EYES
+        left_eye = (nose[0] - 8, nose[1] - 5)
+        right_eye = (nose[0] + 8, nose[1] - 5)
+        cv2.circle(canvas, left_eye, 2, color, -1)
+        cv2.circle(canvas, right_eye, 2, color, -1)
 
         # TORSO
         left_shoulder = get_point(11)
@@ -55,10 +103,8 @@ def draw_stickfigure(canvas, landmarks, width, height):
         left_hip = get_point(23)
         right_hip = get_point(24)
 
-        # Shoulder line
         cv2.line(canvas, left_shoulder, right_shoulder, color, thickness)
 
-        # Spine: center of shoulders to center of hips
         shoulder_center = (
             (left_shoulder[0] + right_shoulder[0]) // 2,
             (left_shoulder[1] + right_shoulder[1]) // 2,
@@ -68,66 +114,64 @@ def draw_stickfigure(canvas, landmarks, width, height):
             (left_hip[1] + right_hip[1]) // 2,
         )
         cv2.line(canvas, shoulder_center, hip_center, color, thickness)
-
-        # Hip line
         cv2.line(canvas, left_hip, right_hip, color, thickness)
 
-        # LEFT ARM
+        # ARMS
         left_elbow = get_point(13)
         left_wrist = get_point(15)
         cv2.line(canvas, left_shoulder, left_elbow, color, thickness)
         cv2.line(canvas, left_elbow, left_wrist, color, thickness)
 
-        # RIGHT ARM
         right_elbow = get_point(14)
         right_wrist = get_point(16)
         cv2.line(canvas, right_shoulder, right_elbow, color, thickness)
         cv2.line(canvas, right_elbow, right_wrist, color, thickness)
 
-        # LEFT LEG
+        # LEGS
         left_knee = get_point(25)
         left_ankle = get_point(27)
         cv2.line(canvas, left_hip, left_knee, color, thickness)
         cv2.line(canvas, left_knee, left_ankle, color, thickness)
 
-        # RIGHT LEG
         right_knee = get_point(26)
         right_ankle = get_point(28)
         cv2.line(canvas, right_hip, right_knee, color, thickness)
         cv2.line(canvas, right_knee, right_ankle, color, thickness)
 
-        # Joint dots for a nicer effect
+        # JOINT MARKERS
         joint_radius = 5
         joints = [
             left_shoulder, right_shoulder, left_elbow, right_elbow,
             left_wrist, right_wrist, left_hip, right_hip,
             left_knee, right_knee, left_ankle, right_ankle
         ]
+
         for joint in joints:
             cv2.circle(canvas, joint, joint_radius, color, -1)
 
     except Exception as e:
-        # Some points may be out of frame or unavailable
-        print(f"⚠️  Drawing error: {e}")
+        print(f"⚠️ Drawing error: {e}")
 
 
 def main():
-    """Run the webcam loop and render both the original camera feed and stick figure.
+    """Run the webcam stick figure application.
 
-    Initializes MediaPipe Pose, reads frames from the default camera, mirrors
-    the image for an intuitive experience, and draws a stick figure using
-    detected landmarks on a separate black canvas.
-
-    Press 'q' to quit.
-
-    Returns:
-        None
+    Initializes MediaPipe Pose and Face Mesh, reads frames from default camera,
+    computes mouth openness, renders a stick figure, overlays FPS and status,
+    and exits on 'q'.
     """
     mp_pose = mp.solutions.pose
+    mp_face_mesh = mp.solutions.face_mesh
+
     pose = mp_pose.Pose(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
-        model_complexity=1,
+        model_complexity=1
+    )
+
+    face_mesh = mp_face_mesh.FaceMesh(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
     )
 
     cap = cv2.VideoCapture(0)
@@ -136,56 +180,98 @@ def main():
         print("❌ Error: Cannot open camera!")
         return
 
-    # Get camera resolution
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     print("✅ Camera started!")
     print(f"📐 Resolution: {width}x{height}")
-    print("🎭 Press 'q' to quit")
+    print("🎭 Move and open your mouth!")
+    print("⌨️ Press 'q' to quit")
+
+    # FPS counter setup
+    fps_counter = 0
+    fps_start_time = cv2.getTickCount()
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Mirror flip (more intuitive)
         frame = cv2.flip(frame, 1)
-
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(frame_rgb)
 
-        # Create black canvas for the stick figure
+        # Process both models
+        pose_results = pose.process(frame_rgb)
+        face_results = face_mesh.process(frame_rgb)
+
+        # Mouth openness calculation
+        mouth_open = calculate_mouth_openness(
+            face_results.multi_face_landmarks[0].landmark if face_results.multi_face_landmarks else None,
+            width,
+            height
+        )
+
+        # Create drawing canvas
         stickfigure_canvas = np.zeros((height, width, 3), dtype=np.uint8)
 
-        # Draw stick figure if a pose is detected
-        if results.pose_landmarks:
+        # Draw stick figure or prompt
+        if pose_results.pose_landmarks:
             draw_stickfigure(
                 stickfigure_canvas,
-                results.pose_landmarks.landmark,
+                pose_results.pose_landmarks.landmark,
                 width,
                 height,
+                mouth_open
             )
         else:
-            # If no person detected, show a message
             cv2.putText(
                 stickfigure_canvas,
-                "Stand in front of the camera!",
+                'Stand in front of the camera!',
                 (width // 2 - 200, height // 2),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
                 (255, 255, 255),
-                2,
+                2
             )
 
-        # Show both windows for comparison
-        cv2.imshow("Camera", frame)
-        cv2.imshow("Stickfigure", stickfigure_canvas)
+        # FPS calculation (update every 30 frames)
+        fps_counter += 1
+        if fps_counter >= 30:
+            fps_end_time = cv2.getTickCount()
+            fps = 30 / ((fps_end_time - fps_start_time) / cv2.getTickFrequency())
+            fps_start_time = fps_end_time
+            fps_counter = 0
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+            cv2.putText(
+                stickfigure_canvas,
+                f'FPS: {fps:.1f}',
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+
+        # Mouth status overlay
+        mouth_status = "OPEN" if mouth_open else "CLOSED"
+        cv2.putText(
+            stickfigure_canvas,
+            f'Mouth: {mouth_status}',
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 255),
+            2
+        )
+
+        cv2.imshow('Stickfigure Webcam', stickfigure_canvas)
+        cv2.imshow('Camera', frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     pose.close()
+    face_mesh.close()
     cap.release()
     cv2.destroyAllWindows()
     print("👋 Closing application")
