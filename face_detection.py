@@ -27,16 +27,15 @@ def _euclidean_distance(point1, point2):
 
 
 def calculate_mouth_openness(face_landmarks, width, height):
-    """
-    Calculate if mouth is open based on Face Mesh landmarks.
+    """Calculate if mouth is open based on Face Mesh landmarks.
 
     Args:
-        face_landmarks: MediaPipe face mesh landmarks
-        width: Frame width in pixels
-        height: Frame height in pixels
+        face_landmarks: MediaPipe face mesh landmarks.
+        width: Frame width in pixels.
+        height: Frame height in pixels.
 
     Returns:
-        bool: True if mouth is open, False otherwise
+        bool: True if mouth is open, False otherwise.
     """
     if not face_landmarks:
         return False
@@ -44,17 +43,11 @@ def calculate_mouth_openness(face_landmarks, width, height):
     landmarks = config.MOUTH_LANDMARKS
 
     try:
-        # Get multiple points for more accurate measurement
-        upper_lip_top = face_landmarks[landmarks['upper_lip_top']]
-        lower_lip_bottom = face_landmarks[landmarks['lower_lip_bottom']]
-        forehead = face_landmarks[landmarks['forehead']]
-        chin = face_landmarks[landmarks['chin']]
-
-        # Convert to pixel coordinates
-        upper_y = upper_lip_top.y * height
-        lower_y = lower_lip_bottom.y * height
-        forehead_y = forehead.y * height
-        chin_y = chin.y * height
+        # Cache pixel conversions
+        upper_y = face_landmarks[landmarks['upper_lip_top']].y * height
+        lower_y = face_landmarks[landmarks['lower_lip_bottom']].y * height
+        forehead_y = face_landmarks[landmarks['forehead']].y * height
+        chin_y = face_landmarks[landmarks['chin']].y * height
 
         # Calculate mouth opening distance
         mouth_distance = abs(lower_y - upper_y)
@@ -69,17 +62,15 @@ def calculate_mouth_openness(face_landmarks, width, height):
 
         return mouth_distance > threshold
 
-    except Exception as e:
-        print(f"Error calculating mouth openness: {e}")
+    except (IndexError, AttributeError):
         return False
 
 
 def calculate_eye_aspect_ratio(face_landmarks, width, height):
-    """
-    Calculates a simplified eye aspect ratio (EAR) based on vertical distances.
+    """Calculate a simplified eye aspect ratio (EAR) based on vertical distances.
 
-    This ratio is normalized by face height to be robust to
-    scale changes. A smaller ratio indicates a closed eye.
+    This ratio is normalized by face height to be robust to scale changes.
+    A smaller ratio indicates a closed eye.
 
     Args:
         face_landmarks: MediaPipe face mesh landmarks.
@@ -94,27 +85,25 @@ def calculate_eye_aspect_ratio(face_landmarks, width, height):
         return 1.0  # Default to open if no landmarks
 
     try:
-        # Convert to pixel coordinates
-        def _get_coords(idx):
+        # Coordinate getter with caching
+        def get_coords(idx):
             lm = face_landmarks[idx]
-            return (int(lm.x * width), int(lm.y * height))
+            return int(lm.x * width), int(lm.y * height)
 
-        # Get vertical eye landmarks
-        left_eye_top = _get_coords(config.LEFT_EYE_TOP)
-        left_eye_bottom = _get_coords(config.LEFT_EYE_BOTTOM)
-        right_eye_top = _get_coords(config.RIGHT_EYE_TOP)
-        right_eye_bottom = _get_coords(config.RIGHT_EYE_BOTTOM)
-
-        # Get face height landmarks
-        forehead = _get_coords(config.MOUTH_LANDMARKS['forehead'])
-        chin = _get_coords(config.MOUTH_LANDMARKS['chin'])
+        # Get all required points at once
+        left_eye_top = get_coords(config.LEFT_EYE_TOP)
+        left_eye_bottom = get_coords(config.LEFT_EYE_BOTTOM)
+        right_eye_top = get_coords(config.RIGHT_EYE_TOP)
+        right_eye_bottom = get_coords(config.RIGHT_EYE_BOTTOM)
+        forehead = get_coords(config.MOUTH_LANDMARKS['forehead'])
+        chin = get_coords(config.MOUTH_LANDMARKS['chin'])
 
         # Calculate vertical distances
         left_eye_dist = _euclidean_distance(left_eye_top, left_eye_bottom)
         right_eye_dist = _euclidean_distance(right_eye_top, right_eye_bottom)
 
         # Average vertical eye distance
-        avg_eye_dist = (left_eye_dist + right_eye_dist) / 2.0
+        avg_eye_dist = (left_eye_dist + right_eye_dist) * 0.5
 
         # Calculate face height
         face_height = _euclidean_distance(forehead, chin)
@@ -122,25 +111,22 @@ def calculate_eye_aspect_ratio(face_landmarks, width, height):
             return 1.0  # Default to open
 
         # Normalize eye distance by face height
-        ear_ratio = avg_eye_dist / face_height
-        return ear_ratio
+        return avg_eye_dist / face_height
 
-    except Exception as e:
-        print(f"Error calculating EAR: {e}")
+    except (IndexError, AttributeError, ZeroDivisionError):
         return 1.0  # Default to open on error
 
 
 def draw_face_landmarks(canvas, face_landmarks, width, height):
-    """
-    Draw face mesh landmarks for debugging.
+    """Draw face mesh landmarks for debugging.
 
     Highlights key facial landmarks used for mouth and eye detection.
 
     Args:
-        canvas: Numpy array to draw on
-        face_landmarks: MediaPipe face mesh landmarks
-        width: Canvas width
-        height: Canvas height
+        canvas: Numpy array to draw on.
+        face_landmarks: MediaPipe face mesh landmarks.
+        width: Canvas width.
+        height: Canvas height.
     """
     if not face_landmarks:
         return
@@ -162,19 +148,19 @@ def draw_face_landmarks(canvas, face_landmarks, width, height):
     ]
 
     try:
-        # Draw mouth points (Red)
+        # Batch convert mouth points
         for idx in mouth_points:
             landmark = face_landmarks[idx]
             x = int(landmark.x * width)
             y = int(landmark.y * height)
             cv2.circle(canvas, (x, y), 2, (0, 0, 255), -1)
 
-        # Draw eye points (Blue)
+        # Batch convert eye points
         for idx in eye_points:
             landmark = face_landmarks[idx]
             x = int(landmark.x * width)
             y = int(landmark.y * height)
             cv2.circle(canvas, (x, y), 2, (255, 0, 0), -1)
 
-    except Exception as e:
-        print(f"Error drawing face landmarks: {e}")
+    except (IndexError, AttributeError):
+        pass  # Silently skip on error

@@ -80,11 +80,13 @@ class StickfigureWebcam:
         print_startup_info(self.width, self.height)
 
     def process_frame(self, frame):
-        """
-        Process a single frame for pose and face detection.
+        """Process a single frame for pose and face detection.
+
+        Minimizes color conversions and reuses
+        processed frames for both detections.
 
         Args:
-            frame: Input frame from camera
+            frame: Input frame from camera.
 
         Returns:
             tuple: (frame, pose_results, face_results, mouth_open, eyes_closed)
@@ -92,48 +94,52 @@ class StickfigureWebcam:
         # Flip frame horizontally for mirror effect
         frame = cv2.flip(frame, 1)
 
-        # Process on smaller frame for performance
+        # Process on smaller frame for performance - single resize operation
         processing_frame = cv2.resize(
             frame,
             (config.PROCESSING_WIDTH, config.PROCESSING_HEIGHT)
         )
+
+        # Single color conversion to RGB
         frame_rgb = cv2.cvtColor(processing_frame, cv2.COLOR_BGR2RGB)
 
-        # Run detections
+        # Run detections on the same RGB frame
         pose_results = self.pose.process(frame_rgb)
         face_results = self.face_mesh.process(frame_rgb)
 
         mouth_open = False
-        if face_results.multi_face_landmarks:
-            landmarks = face_results.multi_face_landmarks[0].landmark
 
-            # Detect mouth opening
-            mouth_open = calculate_mouth_openness(
-                landmarks,
-                config.PROCESSING_WIDTH,
-                config.PROCESSING_HEIGHT
-            )
-
-            # Detect closed eyes
-            ear_ratio = calculate_eye_aspect_ratio(
-                landmarks,
-                config.PROCESSING_WIDTH,
-                config.PROCESSING_HEIGHT
-            )
-
-            if ear_ratio < config.EYES_CLOSED_RATIO_THRESHOLD:
-                self.eyes_closed_frame_counter += 1
-            else:
-                self.eyes_closed_frame_counter = 0
-
-            if self.eyes_closed_frame_counter >= config.EYES_CLOSED_CONSECUTIVE_FRAMES:
-                self.eyes_closed = True
-            else:
-                self.eyes_closed = False
-        else:
-            # No face detected, reset state
+        # Early exit if no face detected
+        if not face_results.multi_face_landmarks:
             self.eyes_closed_frame_counter = 0
             self.eyes_closed = False
+            return frame, pose_results, face_results, mouth_open, self.eyes_closed
+
+        # Process face landmarks only if face detected
+        landmarks = face_results.multi_face_landmarks[0].landmark
+
+        # Detect mouth opening
+        mouth_open = calculate_mouth_openness(
+            landmarks,
+            config.PROCESSING_WIDTH,
+            config.PROCESSING_HEIGHT
+        )
+
+        # Detect closed eyes
+        ear_ratio = calculate_eye_aspect_ratio(
+            landmarks,
+            config.PROCESSING_WIDTH,
+            config.PROCESSING_HEIGHT
+        )
+
+        if ear_ratio < config.EYES_CLOSED_RATIO_THRESHOLD:
+            self.eyes_closed_frame_counter += 1
+        else:
+            self.eyes_closed_frame_counter = 0
+
+        self.eyes_closed = (
+                self.eyes_closed_frame_counter >= config.EYES_CLOSED_CONSECUTIVE_FRAMES
+        )
 
         return frame, pose_results, face_results, mouth_open, self.eyes_closed
 
