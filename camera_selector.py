@@ -11,8 +11,9 @@ import cv2
 def detect_available_cameras(max_cameras=10):
     """Detect all available camera devices.
 
-    Attempts to open cameras from index 0 to max_cameras and returns
-    a list of working camera indices with their names.
+    Fast sequential check with early read test and proper resource cleanup.
+    Note: Parallel checking doesn't work reliably with OpenCV due to
+    backend thread-safety issues, especially on Windows.
 
     Args:
         max_cameras: Maximum number of camera indices to check.
@@ -23,16 +24,24 @@ def detect_available_cameras(max_cameras=10):
     available_cameras = []
 
     for i in range(max_cameras):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            # Try to get camera name (platform-dependent)
-            ret, _ = cap.read()
-            if ret:
-                # Get camera backend info
-                backend = cap.getBackendName()
-                name = f"Camera {i} ({backend})"
-                available_cameras.append((i, name))
-            cap.release()
+        try:
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # Use DirectShow on Windows
+            if cap.isOpened():
+                # Quick read test
+                ret, _ = cap.read()
+                if ret:
+                    # Get camera backend info
+                    backend = cap.getBackendName()
+                    name = f"Camera {i} ({backend})"
+                    available_cameras.append((i, name))
+                cap.release()
+
+            # Early exit if we found cameras and hit several failures
+            if available_cameras and i > (available_cameras[-1][0] + 3):
+                break
+
+        except Exception:
+            pass
 
     return available_cameras
 
