@@ -30,7 +30,7 @@ def get_point(landmarks, idx, width, height):
     return (x, y)
 
 
-def draw_head_and_face(canvas, head_center, head_radius, mouth_open):
+def draw_head_and_face(canvas, head_center, head_radius, mouth_open, eyes_closed):
     """
     Draw the head, eyes, and mouth of the stick figure.
 
@@ -39,6 +39,7 @@ def draw_head_and_face(canvas, head_center, head_radius, mouth_open):
         head_center: (x, y) center position of the head
         head_radius: Radius of the head circle
         mouth_open: Whether mouth is open
+        eyes_closed: Whether eyes are closed
     """
     color = config.STICKFIGURE_COLOR
     thickness = config.STICKFIGURE_THICKNESS
@@ -46,18 +47,31 @@ def draw_head_and_face(canvas, head_center, head_radius, mouth_open):
     # Draw head circle
     cv2.circle(canvas, head_center, head_radius, color, thickness)
 
-    # EYES - positioned in upper third of head
+    # EYES
     eye_y_offset = int(-head_radius * config.EYE_Y_OFFSET_RATIO)
     eye_spacing = int(head_radius * config.EYE_SPACING_RATIO)
     eye_radius = max(3, int(head_radius * config.EYE_RADIUS_RATIO))
 
-    left_eye = (head_center[0] - eye_spacing, head_center[1] + eye_y_offset)
-    right_eye = (head_center[0] + eye_spacing, head_center[1] + eye_y_offset)
+    left_eye_center = (head_center[0] - eye_spacing, head_center[1] + eye_y_offset)
+    right_eye_center = (head_center[0] + eye_spacing, head_center[1] + eye_y_offset)
 
-    cv2.circle(canvas, left_eye, eye_radius, color, -1)
-    cv2.circle(canvas, right_eye, eye_radius, color, -1)
+    if eyes_closed:
+        # Draw closed eyes (lines)
+        line_len = int(eye_radius * 1.5)
+        cv2.line(canvas,
+                 (left_eye_center[0] - line_len, left_eye_center[1]),
+                 (left_eye_center[0] + line_len, left_eye_center[1]),
+                 color, 2)
+        cv2.line(canvas,
+                 (right_eye_center[0] - line_len, right_eye_center[1]),
+                 (right_eye_center[0] + line_len, right_eye_center[1]),
+                 color, 2)
+    else:
+        # Draw open eyes (circles)
+        cv2.circle(canvas, left_eye_center, eye_radius, color, -1)
+        cv2.circle(canvas, right_eye_center, eye_radius, color, -1)
 
-    # MOUTH - positioned in lower third of head
+    # MOUTH
     mouth_y_offset = int(head_radius * config.MOUTH_Y_OFFSET_RATIO)
     mouth_center = (head_center[0], head_center[1] + mouth_y_offset)
     mouth_width = int(head_radius * config.MOUTH_WIDTH_RATIO)
@@ -68,7 +82,7 @@ def draw_head_and_face(canvas, head_center, head_radius, mouth_open):
         cv2.ellipse(canvas, mouth_center, (mouth_width // 2, mouth_height // 2),
                     0, 0, 360, color, -1)
     else:
-        # Closed mouth - draw as a line with slight curve
+        # Closed mouth - draw as a line
         cv2.line(canvas,
                  (mouth_center[0] - mouth_width // 2, mouth_center[1]),
                  (mouth_center[0] + mouth_width // 2, mouth_center[1]),
@@ -129,7 +143,6 @@ def draw_pose_debug_markers(canvas, landmarks, width, height):
         try:
             point = get_point(landmarks, idx, width, height)
 
-            # Different colors for different body parts
             if idx == 0:  # Nose
                 marker_color = debug_colors['nose']
             elif idx in [11, 12, 13, 14, 15, 16]:  # Arms
@@ -140,7 +153,6 @@ def draw_pose_debug_markers(canvas, landmarks, width, height):
                 marker_color = debug_colors['other']
 
             cv2.circle(canvas, point, 3, marker_color, -1)
-            # Draw landmark index number
             cv2.putText(canvas, str(idx),
                         (point[0] + 5, point[1] - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.3,
@@ -149,16 +161,10 @@ def draw_pose_debug_markers(canvas, landmarks, width, height):
             pass
 
 
-def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False, draw_debug_markers=False):
+def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False,
+                     eyes_closed=False, draw_debug_markers=False):
     """
     Draw a stick figure based on pose landmarks with natural proportions.
-
-    Creates a more realistic stick figure with:
-    - Properly sized and positioned head
-    - Natural facial features
-    - Smooth body proportions
-    - Clear joint markers
-    - Optional debug markers showing detected landmark points
 
     Args:
         canvas: Numpy array to draw on
@@ -166,6 +172,7 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False, draw_de
         width: Canvas width
         height: Canvas height
         mouth_open: Whether mouth is open
+        eyes_closed: Whether eyes are closed
         draw_debug_markers: Whether to draw small markers at detected landmark positions
     """
     if not landmarks:
@@ -177,7 +184,6 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False, draw_de
 
     try:
         # Key body points
-        nose = get_point(landmarks, 0, width, height)
         left_shoulder = get_point(landmarks, 11, width, height)
         right_shoulder = get_point(landmarks, 12, width, height)
         left_elbow = get_point(landmarks, 13, width, height)
@@ -207,26 +213,22 @@ def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False, draw_de
             (right_shoulder[1] - left_shoulder[1]) ** 2
         )
 
-        # HEAD - natural proportions
+        # HEAD
         head_radius = int(shoulder_width * config.HEAD_RADIUS_RATIO)
         head_radius = max(config.HEAD_RADIUS_MIN,
                           min(head_radius, config.HEAD_RADIUS_MAX))
-
-        # Position head above shoulders with natural neck length
         neck_length = int(head_radius * config.NECK_LENGTH_RATIO)
         head_center = (shoulder_center[0], shoulder_center[1] - head_radius - neck_length)
 
         # Draw head and face
-        draw_head_and_face(canvas, head_center, head_radius, mouth_open)
+        draw_head_and_face(canvas, head_center, head_radius, mouth_open, eyes_closed)
 
-        # NECK - connect head to shoulders
+        # NECK
         neck_top = (head_center[0], head_center[1] + head_radius)
         cv2.line(canvas, neck_top, shoulder_center, color, thickness)
 
         # TORSO
         draw_curved_shoulders(canvas, left_shoulder, right_shoulder, shoulder_center, shoulder_width)
-
-        # Spine and hips
         cv2.line(canvas, shoulder_center, hip_center, color, thickness)
         cv2.line(canvas, left_hip, right_hip, color, thickness)
 

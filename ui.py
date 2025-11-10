@@ -6,6 +6,7 @@ FPS display, and status messages.
 """
 
 import cv2
+
 import config
 
 
@@ -38,7 +39,8 @@ class FPSCounter:
         if self.counter >= self.update_interval:
             end_time = cv2.getTickCount()
             time_diff = (end_time - self.start_time) / cv2.getTickFrequency()
-            self.current_fps = self.update_interval / time_diff
+            if time_diff > 0:
+                self.current_fps = self.update_interval / time_diff
             self.start_time = end_time
             self.counter = 0
 
@@ -54,7 +56,7 @@ class FPSCounter:
         return self.current_fps
 
 
-def draw_debug_info(canvas, fps, mouth_open, width, height):
+def draw_debug_info(canvas, fps, mouth_open, eyes_closed, width, height):
     """
     Draw debug information overlay on canvas.
 
@@ -62,10 +64,10 @@ def draw_debug_info(canvas, fps, mouth_open, width, height):
         canvas: Canvas to draw on
         fps: Current FPS value
         mouth_open: Whether mouth is detected as open
+        eyes_closed: Whether eyes are detected as closed
         width: Canvas width
         height: Canvas height
     """
-    text_color = config.DEBUG_TEXT_COLOR
     text_scale = config.DEBUG_TEXT_SCALE
     text_thickness = config.DEBUG_TEXT_THICKNESS
 
@@ -92,6 +94,18 @@ def draw_debug_info(canvas, fps, mouth_open, width, height):
         text_thickness
     )
 
+    # Blink status
+    eyes_status = "YES" if eyes_closed else "NO"
+    cv2.putText(
+        canvas,
+        f'Eyes Closed: {eyes_status}',
+        (10, 90),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        text_scale,
+        (0, 255, 255),
+        text_thickness
+    )
+
 
 def draw_no_person_message(canvas, width, height):
     """
@@ -102,14 +116,23 @@ def draw_no_person_message(canvas, width, height):
         width: Canvas width
         height: Canvas height
     """
+    text = config.MESSAGE_NO_PERSON
+    font_scale = 1.0
+    thickness = 2
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+    text_x = (width - text_size[0]) // 2
+    text_y = (height + text_size[1]) // 2
+
     cv2.putText(
         canvas,
-        config.MESSAGE_NO_PERSON,
-        (width // 2 - 200, height // 2),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        text,
+        (text_x, text_y),
+        font,
+        font_scale,
         config.STICKFIGURE_COLOR,
-        2
+        thickness
     )
 
 
@@ -152,7 +175,7 @@ def draw_debug_camera_label(canvas, height):
 
 
 def create_debug_overlay(frame, pose_results, face_results, landmarks,
-                         width, height, mouth_open, fps,
+                         width, height, mouth_open, eyes_closed, fps,
                          stickfigure_drawer, face_drawer):
     """
     Create debug overlay with all detection visualizations.
@@ -165,6 +188,7 @@ def create_debug_overlay(frame, pose_results, face_results, landmarks,
         width: Frame width
         height: Frame height
         mouth_open: Whether mouth is open
+        eyes_closed: Whether eyes are closed
         fps: Current FPS
         stickfigure_drawer: Function to draw stickfigure
         face_drawer: Function to draw face landmarks
@@ -182,6 +206,7 @@ def create_debug_overlay(frame, pose_results, face_results, landmarks,
             width,
             height,
             mouth_open,
+            eyes_closed,
             draw_debug_markers=True
         )
 
@@ -195,7 +220,7 @@ def create_debug_overlay(frame, pose_results, face_results, landmarks,
         )
 
     # Add debug information
-    draw_debug_info(debug_canvas, fps, mouth_open, width, height)
+    draw_debug_info(debug_canvas, fps, mouth_open, eyes_closed, width, height)
     draw_debug_camera_label(debug_canvas, height)
 
     return debug_canvas
@@ -209,10 +234,13 @@ def print_startup_info(width, height):
         width: Camera width
         height: Camera height
     """
-    print("Camera initialized")
-    print(f"Resolution: {width}x{height}")
+    print("--- Stickfigure Webcam ---")
+    print(f"Camera Resolution: {width}x{height}")
+    print(f"Processing Resolution: {config.PROCESSING_WIDTH}x{config.PROCESSING_HEIGHT}")
+    print("--------------------------")
     print(config.MESSAGE_QUIT)
     print(config.MESSAGE_DEBUG_KEY)
+    print("--------------------------")
 
 
 def handle_key_press(key, debug_mode):
@@ -237,6 +265,9 @@ def handle_key_press(key, debug_mode):
 
         # Close debug window when turning off debug mode
         if not new_debug_mode:
-            cv2.destroyWindow(config.WINDOW_NAME_DEBUG)
+            try:
+                cv2.destroyWindow(config.WINDOW_NAME_DEBUG)
+            except cv2.error:
+                pass  # Window might already be closed
 
     return should_quit, new_debug_mode

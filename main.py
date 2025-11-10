@@ -2,7 +2,7 @@
 Main application module for Stickfigure Webcam.
 
 This module contains the main application loop that ties together
-all components: camera, detection, drawing, and UI.
+all components: camera, detection, drawing, UI, and virtual camera output.
 """
 
 import cv2
@@ -10,11 +10,16 @@ import mediapipe as mp
 import numpy as np
 
 import config
-from face_detection import calculate_mouth_openness, draw_face_landmarks
+from face_detection import (
+    calculate_mouth_openness,
+    calculate_eye_aspect_ratio,
+    draw_face_landmarks
+)
 from stickfigure import draw_stickfigure
 from ui import (
     FPSCounter,
     draw_no_person_message,
+    draw_debug_mode_indicator,
     create_debug_overlay,
     print_startup_info,
     handle_key_press
@@ -47,20 +52,22 @@ class StickfigureWebcam:
 
         # Initialize camera
         self.cap = cv2.VideoCapture(config.CAMERA_ID)
-
         if not self.cap.isOpened():
             raise RuntimeError("Error: Cannot open camera")
 
         # Configure camera
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         # Initialize FPS counter and debug mode
         self.fps_counter = FPSCounter(config.FPS_UPDATE_INTERVAL)
         self.debug_mode = False
+
+        # Eye detection state
+        self.eyes_closed_frame_counter = 0
+        self.eyes_closed = False
 
         # Initialize Virtual Camera
         self.vcam = VirtualCameraOutput(
@@ -80,7 +87,7 @@ class StickfigureWebcam:
             frame: Input frame from camera
 
         Returns:
-            tuple: (pose_results, face_results, mouth_open)
+            tuple: (frame, pose_results, face_results, mouth_open, eyes_closed)
         """
         # Flip frame horizontally for mirror effect
         frame = cv2.flip(frame, 1)
@@ -96,24 +103,48 @@ class StickfigureWebcam:
         pose_results = self.pose.process(frame_rgb)
         face_results = self.face_mesh.process(frame_rgb)
 
-        # Detect mouth opening
         mouth_open = False
         if face_results.multi_face_landmarks:
+            landmarks = face_results.multi_face_landmarks[0].landmark
+
+            # Detect mouth opening
             mouth_open = calculate_mouth_openness(
-                face_results.multi_face_landmarks[0].landmark,
+                landmarks,
                 config.PROCESSING_WIDTH,
                 config.PROCESSING_HEIGHT
             )
 
-        return frame, pose_results, face_results, mouth_open
+            # Detect closed eyes
+            ear_ratio = calculate_eye_aspect_ratio(
+                landmarks,
+                config.PROCESSING_WIDTH,
+                config.PROCESSING_HEIGHT
+            )
 
-    def render_stickfigure_view(self, pose_results, mouth_open):
+            if ear_ratio < config.EYES_CLOSED_RATIO_THRESHOLD:
+                self.eyes_closed_frame_counter += 1
+            else:
+                self.eyes_closed_frame_counter = 0
+
+            if self.eyes_closed_frame_counter >= config.EYES_CLOSED_CONSECUTIVE_FRAMES:
+                self.eyes_closed = True
+            else:
+                self.eyes_closed = False
+        else:
+            # No face detected, reset state
+            self.eyes_closed_frame_counter = 0
+            self.eyes_closed = False
+
+        return frame, pose_results, face_results, mouth_open, self.eyes_closed
+
+    def render_stickfigure_view(self, pose_results, mouth_open, eyes_closed):
         """
         Render the main stickfigure view.
 
         Args:
             pose_results: MediaPipe pose detection results
             mouth_open: Whether mouth is detected as open
+            eyes_closed: Whether eyes are detected as closed
 
         Returns:
             numpy.ndarray: Canvas with stickfigure
@@ -129,15 +160,19 @@ class StickfigureWebcam:
                 self.width,
                 self.height,
                 mouth_open,
-                draw_debug_markers=False  # Always false for clean main view
+                eyes_closed,
+                draw_debug_markers=False
             )
         else:
             draw_no_person_message(canvas, self.width, self.height)
 
-        # Do NOT draw any debug overlays here to keep main window clean.
+        # Draw debug mode indicator if active
+        if self.debug_mode:
+            draw_debug_mode_indicator(canvas, self.height)
+
         return canvas
 
-    def render_debug_view(self, frame, pose_results, face_results, mouth_open):
+    def render_debug_view(self, frame, pose_results, face_results, mouth_open, eyes_closed):
         """
         Render the debug camera view.
 
@@ -146,20 +181,23 @@ class StickfigureWebcam:
             pose_results: MediaPipe pose detection results
             face_results: MediaPipe face mesh results
             mouth_open: Whether mouth is detected as open
+            eyes_closed: Whether eyes are detected as closed
 
         Returns:
             numpy.ndarray: Frame with debug overlay
         """
         current_fps = self.fps_counter.get_fps()
+        landmarks = pose_results.pose_landmarks.landmark if pose_results.pose_landmarks else None
 
         return create_debug_overlay(
             frame,
             pose_results,
             face_results,
-            pose_results.pose_landmarks.landmark if pose_results.pose_landmarks else None,
+            landmarks,
             self.width,
             self.height,
             mouth_open,
+            eyes_closed,
             current_fps,
             draw_stickfigure,
             draw_face_landmarks
@@ -168,32 +206,33 @@ class StickfigureWebcam:
     def run(self):
         """
         Main application loop.
-
-        Continuously processes frames, updates displays, and handles user input
-        until the user quits.
         """
         while True:
             # Read and process frame
             ret, frame = self.cap.read()
             if not ret:
+                print("Error: Cannot read frame from camera.")
                 break
 
-            frame, pose_results, face_results, mouth_open = self.process_frame(frame)
+            frame, pose_results, face_results, mouth_open, eyes_closed = self.process_frame(frame)
 
             # Update FPS
             self.fps_counter.update()
 
             # Render main stickfigure view (always clean)
-            stickfigure_canvas = self.render_stickfigure_view(pose_results, mouth_open)
+            stickfigure_canvas = self.render_stickfigure_view(pose_results, mouth_open, eyes_closed)
             cv2.imshow(config.WINDOW_NAME_STICKFIGURE, stickfigure_canvas)
 
-            # Send frame to virtual camera
+            # Send to virtual camera
             if self.vcam.is_active:
                 self.vcam.send_frame(stickfigure_canvas)
+                self.vcam.sleep_until_next_frame()
 
             # Render debug view if enabled
             if self.debug_mode:
-                debug_canvas = self.render_debug_view(frame, pose_results, face_results, mouth_open)
+                debug_canvas = self.render_debug_view(
+                    frame, pose_results, face_results, mouth_open, eyes_closed
+                )
                 cv2.imshow(config.WINDOW_NAME_DEBUG, debug_canvas)
 
             # Handle keyboard input
@@ -205,7 +244,6 @@ class StickfigureWebcam:
 
     def cleanup(self):
         """Clean up resources."""
-        # Stop virtual camera
         if self.vcam.is_active:
             self.vcam.stop()
 
@@ -213,6 +251,7 @@ class StickfigureWebcam:
         self.face_mesh.close()
         self.cap.release()
         cv2.destroyAllWindows()
+        print("Application cleaned up and exited.")
 
 
 def main():
@@ -225,7 +264,7 @@ def main():
     except KeyboardInterrupt:
         print("\nInterrupted by user")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"An unexpected error occurred: {e}")
     finally:
         if 'app' in locals():
             app.cleanup()
