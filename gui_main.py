@@ -5,7 +5,6 @@ This module provides a user-friendly GUI interface for the stickfigure webcam
 application with live configuration changes and threaded camera processing.
 """
 
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -14,13 +13,13 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from PyQt6.QtCore import (
-    Qt, QTimer, pyqtSignal, QObject, QThread, pyqtSlot
+    Qt, pyqtSignal, QThread, pyqtSlot
 )
 from PyQt6.QtGui import QImage, QPixmap, QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QSlider, QGroupBox, QCheckBox,
-    QComboBox, QSpinBox, QDoubleSpinBox, QTabWidget,
+    QComboBox, QTabWidget,
     QScrollArea, QSizePolicy, QMessageBox
 )
 
@@ -951,4 +950,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    # Check for --no-gui flag
+    if '--no-gui' in sys.argv or '--cli' in sys.argv:
+        # Import CLI version
+        from main import main as cli_main
+
+        cli_main()
+    else:
+        # Try GUI, fall back to CLI
+        try:
+            main()  # GUI main
+        except ImportError:
+            print("GUI not available, falling back to CLI...")
+            from main import main as cli_main
+
+            cli_main()
