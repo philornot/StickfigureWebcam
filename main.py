@@ -6,21 +6,20 @@ all components: camera, detection, drawing, and UI.
 """
 
 import cv2
-import numpy as np
 import mediapipe as mp
+import numpy as np
 
 import config
 from face_detection import calculate_mouth_openness, draw_face_landmarks
 from stickfigure import draw_stickfigure
 from ui import (
     FPSCounter,
-    draw_debug_info,
     draw_no_person_message,
-    draw_debug_mode_indicator,
     create_debug_overlay,
     print_startup_info,
     handle_key_press
 )
+from virtual_camera import VirtualCameraOutput
 
 
 class StickfigureWebcam:
@@ -62,6 +61,14 @@ class StickfigureWebcam:
         # Initialize FPS counter and debug mode
         self.fps_counter = FPSCounter(config.FPS_UPDATE_INTERVAL)
         self.debug_mode = False
+
+        # Initialize Virtual Camera
+        self.vcam = VirtualCameraOutput(
+            self.width,
+            self.height,
+            fps=config.CAMERA_FPS
+        )
+        self.vcam.start()
 
         print_startup_info(self.width, self.height)
 
@@ -180,6 +187,10 @@ class StickfigureWebcam:
             stickfigure_canvas = self.render_stickfigure_view(pose_results, mouth_open)
             cv2.imshow(config.WINDOW_NAME_STICKFIGURE, stickfigure_canvas)
 
+            # Send frame to virtual camera
+            if self.vcam.is_active:
+                self.vcam.send_frame(stickfigure_canvas)
+
             # Render debug view if enabled
             if self.debug_mode:
                 debug_canvas = self.render_debug_view(frame, pose_results, face_results, mouth_open)
@@ -194,6 +205,10 @@ class StickfigureWebcam:
 
     def cleanup(self):
         """Clean up resources."""
+        # Stop virtual camera
+        if self.vcam.is_active:
+            self.vcam.stop()
+
         self.pose.close()
         self.face_mesh.close()
         self.cap.release()

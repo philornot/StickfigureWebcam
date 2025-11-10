@@ -9,6 +9,7 @@ including camera settings, detection parameters, and visual styling options.
 CAMERA_ID = 0
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
+CAMERA_FPS = 30  # Target FPS for virtual camera
 PROCESSING_WIDTH = 320  # Smaller resolution for faster processing
 PROCESSING_HEIGHT = 240
 
@@ -47,7 +48,7 @@ HEAD_RADIUS_RATIO = 0.4  # Relative to shoulder width
 HEAD_RADIUS_MIN = 25
 HEAD_RADIUS_MAX = 45
 NECK_LENGTH_RATIO = 0.6  # Relative to head radius
-EYE_Y_OFFSET_RATIO = -0.25  # Relative to head radius
+EYE_Y_OFFSET_RATIO = 0.25  # Relative to head radius; positive moves eyes upwards in current formula
 EYE_SPACING_RATIO = 0.35  # Relative to head radius
 MOUTH_Y_OFFSET_RATIO = 0.4  # Relative to head radius
 SHOULDER_CURVE_DEPTH_RATIO = 0.15  # Relative to shoulder width
