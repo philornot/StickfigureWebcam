@@ -1,523 +1,224 @@
+"""
+Main application module for Stickfigure Webcam.
+
+This module contains the main application loop that ties together
+all components: camera, detection, drawing, and UI.
+"""
+
 import cv2
-import mediapipe as mp
 import numpy as np
+import mediapipe as mp
+
+import config
+from face_detection import calculate_mouth_openness, draw_face_landmarks
+from stickfigure import draw_stickfigure
+from ui import (
+    FPSCounter,
+    draw_debug_info,
+    draw_no_person_message,
+    draw_debug_mode_indicator,
+    create_debug_overlay,
+    print_startup_info,
+    handle_key_press
+)
 
 
-def calculate_mouth_openness(face_landmarks, width, height):
+class StickfigureWebcam:
     """
-    Calculate if mouth is open based on Face Mesh landmarks.
-
-    Uses multiple landmark points for more accurate detection:
-    - Upper lip: points 13, 14
-    - Lower lip: points 78, 308, 87, 317
-    - Calculates vertical distance and compares to face height ratio
-
-    Args:
-        face_landmarks: MediaPipe face mesh landmarks
-        width: Frame width in pixels
-        height: Frame height in pixels
-
-    Returns:
-        bool: True if mouth is open, False otherwise
+    Main application class for Stickfigure Webcam.
     """
-    if not face_landmarks:
-        return False
 
-    # Get multiple points for more accurate measurement
-    # Upper lip center
-    upper_lip_top = face_landmarks[13]
-    # Lower lip center
-    lower_lip_bottom = face_landmarks[14]
-    # Additional points for better accuracy
-    upper_outer_1 = face_landmarks[78]
-    upper_outer_2 = face_landmarks[308]
-    lower_outer_1 = face_landmarks[87]
-    lower_outer_2 = face_landmarks[317]
+    def __init__(self):
+        """Initialize the application with all required components."""
+        self.mp_pose = mp.solutions.pose
+        self.mp_face_mesh = mp.solutions.face_mesh
 
-    # Convert to pixel coordinates
-    upper_y = upper_lip_top.y * height
-    lower_y = lower_lip_bottom.y * height
+        # Initialize MediaPipe models
+        self.pose = self.mp_pose.Pose(
+            min_detection_confidence=config.POSE_MIN_DETECTION_CONFIDENCE,
+            min_tracking_confidence=config.POSE_MIN_TRACKING_CONFIDENCE,
+            model_complexity=config.POSE_MODEL_COMPLEXITY
+        )
 
-    # Calculate mouth opening distance
-    mouth_distance = abs(lower_y - upper_y)
+        self.face_mesh = self.mp_face_mesh.FaceMesh(
+            max_num_faces=config.FACE_MESH_MAX_FACES,
+            min_detection_confidence=config.FACE_MESH_MIN_DETECTION_CONFIDENCE,
+            min_tracking_confidence=config.FACE_MESH_MIN_TRACKING_CONFIDENCE
+        )
 
-    # Calculate face height for relative threshold
-    # Using forehead (10) to chin (152) distance
-    forehead = face_landmarks[10]
-    chin = face_landmarks[152]
-    face_height = abs((chin.y - forehead.y) * height)
+        # Initialize camera
+        self.cap = cv2.VideoCapture(config.CAMERA_ID)
 
-    # Adaptive threshold based on face size (about 3.5% of face height)
-    # This makes it more sensitive than the fixed threshold of 15
-    threshold = face_height * 0.035
+        if not self.cap.isOpened():
+            raise RuntimeError("Error: Cannot open camera")
 
-    return mouth_distance > threshold
+        # Configure camera
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
 
+        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-def draw_stickfigure(canvas, landmarks, width, height, mouth_open=False, draw_debug_markers=False):
-    """
-    Draw a stick figure based on pose landmarks with natural proportions.
+        # Initialize FPS counter and debug mode
+        self.fps_counter = FPSCounter(config.FPS_UPDATE_INTERVAL)
+        self.debug_mode = False
 
-    Creates a more realistic stick figure with:
-    - Properly sized and positioned head
-    - Natural facial features
-    - Smooth body proportions
-    - Clear joint markers
-    - Optional debug markers showing detected landmark points
+        print_startup_info(self.width, self.height)
 
-    Args:
-        canvas: Numpy array to draw on
-        landmarks: MediaPipe pose landmarks
-        width: Canvas width
-        height: Canvas height
-        mouth_open: Whether mouth is open
-        draw_debug_markers: Whether to draw small markers at detected landmark positions
-    """
-    if not landmarks:
-        return
-
-    def get_point(idx):
+    def process_frame(self, frame):
         """
-        Convert normalized landmark to pixel coordinates.
+        Process a single frame for pose and face detection.
 
         Args:
-            idx: Landmark index
+            frame: Input frame from camera
 
         Returns:
-            tuple: (x, y) pixel coordinates
+            tuple: (pose_results, face_results, mouth_open)
         """
-        lm = landmarks[idx]
-        x = int(lm.x * width)
-        y = int(lm.y * height)
-        return (x, y)
-
-    color = (255, 255, 255)
-    thickness = 4
-    joint_radius = 6
-
-    try:
-        # Key body points
-        nose = get_point(0)
-        left_shoulder = get_point(11)
-        right_shoulder = get_point(12)
-        left_elbow = get_point(13)
-        right_elbow = get_point(14)
-        left_wrist = get_point(15)
-        right_wrist = get_point(16)
-        left_hip = get_point(23)
-        right_hip = get_point(24)
-        left_knee = get_point(25)
-        right_knee = get_point(26)
-        left_ankle = get_point(27)
-        right_ankle = get_point(28)
-
-        # Calculate centers
-        shoulder_center = (
-            (left_shoulder[0] + right_shoulder[0]) // 2,
-            (left_shoulder[1] + right_shoulder[1]) // 2
-        )
-        hip_center = (
-            (left_hip[0] + right_hip[0]) // 2,
-            (left_hip[1] + right_hip[1]) // 2
-        )
-
-        # Calculate shoulder width for proportional head sizing
-        shoulder_width = np.sqrt(
-            (right_shoulder[0] - left_shoulder[0]) ** 2 +
-            (right_shoulder[1] - left_shoulder[1]) ** 2
-        )
-
-        # HEAD - natural proportions (head radius ~40% of shoulder width)
-        head_radius = int(shoulder_width * 0.4)
-        head_radius = max(25, min(head_radius, 45))  # Clamp between 25-45 pixels
-
-        # Position head above shoulders with natural neck length
-        neck_length = int(head_radius * 0.6)
-        head_center = (shoulder_center[0], shoulder_center[1] - head_radius - neck_length)
-
-        # Draw head circle
-        cv2.circle(canvas, head_center, head_radius, color, thickness)
-
-        # NECK - connect head to shoulders
-        neck_top = (head_center[0], head_center[1] + head_radius)
-        cv2.line(canvas, neck_top, shoulder_center, color, thickness)
-
-        # FACE - natural facial features
-        # Eyes positioned in upper third of head
-        eye_y_offset = int(-head_radius * 0.25)
-        eye_spacing = int(head_radius * 0.35)
-        eye_radius = max(3, int(head_radius * 0.12))
-
-        left_eye = (head_center[0] - eye_spacing, head_center[1] + eye_y_offset)
-        right_eye = (head_center[0] + eye_spacing, head_center[1] + eye_y_offset)
-
-        cv2.circle(canvas, left_eye, eye_radius, color, -1)
-        cv2.circle(canvas, right_eye, eye_radius, color, -1)
-
-        # Mouth positioned in lower third of head
-        mouth_y_offset = int(head_radius * 0.4)
-        mouth_center = (head_center[0], head_center[1] + mouth_y_offset)
-        mouth_width = int(head_radius * 0.5)
-
-        if mouth_open:
-            # Open mouth - draw as a circle/oval
-            mouth_height = int(head_radius * 0.25)
-            cv2.ellipse(canvas, mouth_center, (mouth_width // 2, mouth_height // 2),
-                        0, 0, 360, color, -1)
-        else:
-            # Closed mouth - draw as a line with slight curve
-            cv2.line(canvas,
-                     (mouth_center[0] - mouth_width // 2, mouth_center[1]),
-                     (mouth_center[0] + mouth_width // 2, mouth_center[1]),
-                     color, 2)
-
-        # TORSO
-        # Draw curved shoulder line instead of straight line
-        # Calculate control point for the curve (slightly below shoulder center)
-        shoulder_curve_depth = int(shoulder_width * 0.15)
-        control_point = (shoulder_center[0], shoulder_center[1] + shoulder_curve_depth)
-
-        # Create curved shoulder using quadratic bezier curve
-        num_points = 20
-        shoulder_curve_points = []
-        for i in range(num_points + 1):
-            t = i / num_points
-            # Quadratic Bezier formula: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
-            x = int((1 - t) ** 2 * left_shoulder[0] +
-                    2 * (1 - t) * t * control_point[0] +
-                    t ** 2 * right_shoulder[0])
-            y = int((1 - t) ** 2 * left_shoulder[1] +
-                    2 * (1 - t) * t * control_point[1] +
-                    t ** 2 * right_shoulder[1])
-            shoulder_curve_points.append([x, y])
-
-        # Draw the curved shoulder line
-        shoulder_curve_points = np.array(shoulder_curve_points, np.int32)
-        cv2.polylines(canvas, [shoulder_curve_points], False, color, thickness)
-
-        # Spine and hips
-        cv2.line(canvas, shoulder_center, hip_center, color, thickness)
-        cv2.line(canvas, left_hip, right_hip, color, thickness)
-
-        # ARMS
-        cv2.line(canvas, left_shoulder, left_elbow, color, thickness)
-        cv2.line(canvas, left_elbow, left_wrist, color, thickness)
-        cv2.line(canvas, right_shoulder, right_elbow, color, thickness)
-        cv2.line(canvas, right_elbow, right_wrist, color, thickness)
-
-        # LEGS
-        cv2.line(canvas, left_hip, left_knee, color, thickness)
-        cv2.line(canvas, left_knee, left_ankle, color, thickness)
-        cv2.line(canvas, right_hip, right_knee, color, thickness)
-        cv2.line(canvas, right_knee, right_ankle, color, thickness)
-
-        # JOINTS
-        joints = [
-            left_shoulder, right_shoulder,
-            left_elbow, right_elbow,
-            left_wrist, right_wrist,
-            left_hip, right_hip,
-            left_knee, right_knee,
-            left_ankle, right_ankle
-        ]
-
-        for joint in joints:
-            cv2.circle(canvas, joint, joint_radius, color, -1)
-
-        # DEBUG MARKERS - draw small markers at all detected landmark positions
-        if draw_debug_markers:
-            # Draw all 33 pose landmarks as small colored circles
-            for idx in range(33):
-                try:
-                    point = get_point(idx)
-                    # Different colors for different body parts
-                    if idx == 0:  # Nose
-                        marker_color = (255, 0, 255)  # Magenta
-                    elif idx in [11, 12, 13, 14, 15, 16]:  # Arms
-                        marker_color = (255, 255, 0)  # Cyan
-                    elif idx in [23, 24, 25, 26, 27, 28]:  # Legs
-                        marker_color = (0, 255, 255)  # Yellow
-                    else:  # Other points
-                        marker_color = (128, 128, 128)  # Gray
-
-                    cv2.circle(canvas, point, 3, marker_color, -1)
-                    # Draw landmark index number
-                    cv2.putText(canvas, str(idx),
-                                (point[0] + 5, point[1] - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.3,
-                                marker_color, 1)
-                except:
-                    pass
-
-    except Exception as e:
-        print(f"Error drawing stickfigure: {e}")
-
-
-def draw_face_landmarks(canvas, face_landmarks, width, height):
-    """
-    Draw face mesh landmarks for debugging.
-
-    Args:
-        canvas: Numpy array to draw on
-        face_landmarks: MediaPipe face mesh landmarks
-        width: Canvas width
-        height: Canvas height
-    """
-    if not face_landmarks:
-        return
-
-    # Draw key facial landmarks used for mouth detection
-    key_points = [13, 14, 78, 308, 87, 317, 10, 152]  # Lips + forehead + chin
-
-    for idx in key_points:
-        landmark = face_landmarks[idx]
-        x = int(landmark.x * width)
-        y = int(landmark.y * height)
-
-        # Color code: red for mouth points, green for face reference points
-        if idx in [13, 14, 78, 308, 87, 317]:
-            color = (0, 0, 255)  # Red for mouth
-        else:
-            color = (0, 255, 0)  # Green for reference points
-
-        cv2.circle(canvas, (x, y), 2, color, -1)
-        cv2.putText(canvas, str(idx), (x + 3, y - 3),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.25, color, 1)
-
-
-def main():
-    """
-    Main application loop.
-
-    Initializes webcam, pose detection, and face mesh detection.
-    Processes frames in real-time and displays stick figure representation.
-    Press 'q' to quit, 'd' to toggle debug mode.
-    """
-    mp_pose = mp.solutions.pose
-    mp_face_mesh = mp.solutions.face_mesh
-
-    pose = mp_pose.Pose(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        model_complexity=0
-    )
-
-    face_mesh = mp_face_mesh.FaceMesh(
-        max_num_faces=1,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    )
-
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        print("Error: Cannot open camera")
-        return
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    print("Camera initialized")
-    print(f"Resolution: {width}x{height}")
-    print("Press 'q' to quit")
-    print("Press 'd' to toggle debug mode")
-
-    fps_counter = 0
-    fps_start_time = cv2.getTickCount()
-    current_fps = 0
-    debug_mode = False
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
+        # Flip frame horizontally for mirror effect
         frame = cv2.flip(frame, 1)
 
         # Process on smaller frame for performance
-        processing_frame = cv2.resize(frame, (320, 240))
+        processing_frame = cv2.resize(
+            frame,
+            (config.PROCESSING_WIDTH, config.PROCESSING_HEIGHT)
+        )
         frame_rgb = cv2.cvtColor(processing_frame, cv2.COLOR_BGR2RGB)
 
-        pose_results = pose.process(frame_rgb)
-        face_results = face_mesh.process(frame_rgb)
+        # Run detections
+        pose_results = self.pose.process(frame_rgb)
+        face_results = self.face_mesh.process(frame_rgb)
 
         # Detect mouth opening
         mouth_open = False
         if face_results.multi_face_landmarks:
             mouth_open = calculate_mouth_openness(
                 face_results.multi_face_landmarks[0].landmark,
-                320,
-                240
+                config.PROCESSING_WIDTH,
+                config.PROCESSING_HEIGHT
             )
 
-        # Create black canvas for stick figure
-        stickfigure_canvas = np.zeros((height, width, 3), dtype=np.uint8)
+        return frame, pose_results, face_results, mouth_open
+
+    def render_stickfigure_view(self, pose_results, mouth_open):
+        """
+        Render the main stickfigure view.
+
+        Args:
+            pose_results: MediaPipe pose detection results
+            mouth_open: Whether mouth is detected as open
+
+        Returns:
+            numpy.ndarray: Canvas with stickfigure
+        """
+        # Create black canvas
+        canvas = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
         # Draw stick figure or message
         if pose_results.pose_landmarks:
             draw_stickfigure(
-                stickfigure_canvas,
+                canvas,
                 pose_results.pose_landmarks.landmark,
-                width,
-                height,
+                self.width,
+                self.height,
                 mouth_open,
                 draw_debug_markers=False
             )
         else:
-            cv2.putText(
-                stickfigure_canvas,
-                'Stand in front of camera',
-                (width // 2 - 200, height // 2),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2
-            )
+            draw_no_person_message(canvas, self.width, self.height)
 
-        # Create debug camera view if debug mode is enabled
-        if debug_mode:
-            debug_canvas = frame.copy()
+        # Add debug info if enabled
+        if self.debug_mode:
+            current_fps = self.fps_counter.get_fps()
+            draw_debug_info(canvas, current_fps, mouth_open, self.width, self.height)
+            draw_debug_mode_indicator(canvas, self.height)
 
-            # Draw stick figure overlay on camera feed
-            if pose_results.pose_landmarks:
-                draw_stickfigure(
-                    debug_canvas,
-                    pose_results.pose_landmarks.landmark,
-                    width,
-                    height,
-                    mouth_open,
-                    draw_debug_markers=True
-                )
+        return canvas
 
-            # Draw face landmarks
-            if face_results.multi_face_landmarks:
-                draw_face_landmarks(
-                    debug_canvas,
-                    face_results.multi_face_landmarks[0].landmark,
-                    width,
-                    height
-                )
+    def render_debug_view(self, frame, pose_results, face_results, mouth_open):
+        """
+        Render the debug camera view.
 
-            # Add debug overlay information
-            cv2.putText(
-                debug_canvas,
-                f'FPS: {current_fps:.1f}',
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2
-            )
+        Args:
+            frame: Original camera frame
+            pose_results: MediaPipe pose detection results
+            face_results: MediaPipe face mesh results
+            mouth_open: Whether mouth is detected as open
 
-            mouth_status = "OPEN" if mouth_open else "CLOSED"
-            cv2.putText(
-                debug_canvas,
-                f'Mouth: {mouth_status}',
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 255),
-                2
-            )
+        Returns:
+            numpy.ndarray: Frame with debug overlay
+        """
+        current_fps = self.fps_counter.get_fps()
 
-            cv2.putText(
-                debug_canvas,
-                'Debug Camera View',
-                (10, height - 20),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (255, 255, 255),
-                2
-            )
+        return create_debug_overlay(
+            frame,
+            pose_results,
+            face_results,
+            pose_results.pose_landmarks.landmark if pose_results.pose_landmarks else None,
+            self.width,
+            self.height,
+            mouth_open,
+            current_fps,
+            draw_stickfigure,
+            draw_face_landmarks
+        )
 
-            # Show debug camera window
-            cv2.imshow('Camera Debug', debug_canvas)
+    def run(self):
+        """
+        Main application loop.
 
-        # Calculate FPS
-        fps_counter += 1
-        if fps_counter >= 30:
-            fps_end_time = cv2.getTickCount()
-            time_diff = (fps_end_time - fps_start_time) / cv2.getTickFrequency()
-            current_fps = 30 / time_diff
-            fps_start_time = fps_end_time
-            fps_counter = 0
+        Continuously processes frames, updates displays, and handles user input
+        until the user quits.
+        """
+        while True:
+            # Read and process frame
+            ret, frame = self.cap.read()
+            if not ret:
+                break
 
-        # Display debug information if enabled
-        if debug_mode:
-            cv2.putText(
-                stickfigure_canvas,
-                f'FPS: {current_fps:.1f}',
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2
-            )
+            frame, pose_results, face_results, mouth_open = self.process_frame(frame)
 
-            mouth_status = "OPEN" if mouth_open else "CLOSED"
-            cv2.putText(
-                stickfigure_canvas,
-                f'Mouth: {mouth_status}',
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 255),
-                2
-            )
+            # Update FPS
+            self.fps_counter.update()
 
-            cv2.putText(
-                stickfigure_canvas,
-                'Debug Mode (press D to toggle)',
-                (10, height - 20),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (128, 128, 128),
-                1
-            )
+            # Render main stickfigure view
+            stickfigure_canvas = self.render_stickfigure_view(pose_results, mouth_open)
+            cv2.imshow(config.WINDOW_NAME_STICKFIGURE, stickfigure_canvas)
 
-        # Display debug information if enabled
-        if debug_mode:
-            cv2.putText(
-                stickfigure_canvas,
-                f'FPS: {current_fps:.1f}',
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2
-            )
+            # Render debug view if enabled
+            if self.debug_mode:
+                debug_canvas = self.render_debug_view(frame, pose_results, face_results, mouth_open)
+                cv2.imshow(config.WINDOW_NAME_DEBUG, debug_canvas)
 
-            mouth_status = "OPEN" if mouth_open else "CLOSED"
-            cv2.putText(
-                stickfigure_canvas,
-                f'Mouth: {mouth_status}',
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 255),
-                2
-            )
+            # Handle keyboard input
+            key = cv2.waitKey(1) & 0xFF
+            should_quit, self.debug_mode = handle_key_press(key, self.debug_mode)
 
-        cv2.imshow('Stickfigure Webcam', stickfigure_canvas)
+            if should_quit:
+                break
 
-        # Handle key presses
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-        elif key == ord('d'):
-            debug_mode = not debug_mode
-            print(f"Debug mode: {'ON' if debug_mode else 'OFF'}")
-            # Close debug window when turning off debug mode
-            if not debug_mode:
-                cv2.destroyWindow('Camera Debug')
+    def cleanup(self):
+        """Clean up resources."""
+        self.pose.close()
+        self.face_mesh.close()
+        self.cap.release()
+        cv2.destroyAllWindows()
 
-    pose.close()
-    face_mesh.close()
-    cap.release()
-    cv2.destroyAllWindows()
+
+def main():
+    """
+    Application entry point.
+    """
+    try:
+        app = StickfigureWebcam()
+        app.run()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        if 'app' in locals():
+            app.cleanup()
 
 
 if __name__ == "__main__":
