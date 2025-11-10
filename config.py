@@ -45,7 +45,7 @@ RIGHT_EYE_BOTTOM = 374
 
 # Ratio of (vertical eye dist / face height).
 # A value below this threshold is considered "closed eyes".
-EYES_CLOSED_RATIO_THRESHOLD = 0.05
+EYES_CLOSED_RATIO_THRESHOLD = 0.06
 
 # Number of consecutive frames eye must be closed to register.
 EYES_CLOSED_CONSECUTIVE_FRAMES = 3
