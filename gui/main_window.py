@@ -262,6 +262,9 @@ class MainWindow(QMainWindow):
         """Handle window close event."""
         print("[MainWindow] Closing application...")
 
+        # Flush configuration to disk immediately
+        self.live_config.flush_to_disk()
+
         # Stop camera thread
         if self.camera_thread:
             self.camera_thread.stop()
