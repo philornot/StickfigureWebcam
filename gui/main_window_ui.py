@@ -258,6 +258,12 @@ class MainWindowUI:
             self.debug_window = DebugWindow(self.main_window)
             self.debug_window.set_live_config(live_config)
             self.debug_window.window_closed.connect(self._on_debug_window_closed)
+            # Connect FPS updates to debug window once
+            if camera_manager is not None:
+                try:
+                    camera_manager.fps_updated.connect(self.debug_window.update_fps)
+                except Exception as e:
+                    print(f"[MainWindowUI] Warning: could not connect FPS to debug window: {e}")
 
         self.debug_window.show()
         self.debug_window.activateWindow()
