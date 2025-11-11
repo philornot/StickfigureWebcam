@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QImage, QPixmap, QFont, QCloseEvent
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QCheckBox, QScrollArea, QSizePolicy
+    QLabel, QCheckBox, QScrollArea, QSizePolicy, QPushButton
 )
 
 import config
@@ -109,13 +109,21 @@ class MainWindow(QMainWindow):
         vcam_layout.addWidget(self.vcam_mirror_checkbox)
         left_layout.addLayout(vcam_layout)
 
-        # Debug window controls
-        debug_layout = QHBoxLayout()
+        # Camera and debug controls
+        controls_layout = QHBoxLayout()
+
+        # Camera control button
+        self.camera_button = QPushButton("Stop Camera")
+        self.camera_button.clicked.connect(self._on_camera_button_clicked)
+        controls_layout.addWidget(self.camera_button)
+
+        # Debug window checkbox
         self.debug_window_checkbox = QCheckBox("Show Debug Window")
         self.debug_window_checkbox.stateChanged.connect(self._on_debug_window_toggled)
-        debug_layout.addWidget(self.debug_window_checkbox)
-        debug_layout.addStretch()
-        left_layout.addLayout(debug_layout)
+        controls_layout.addWidget(self.debug_window_checkbox)
+
+        controls_layout.addStretch()
+        left_layout.addLayout(controls_layout)
 
         main_layout.addLayout(left_layout, 2)
 
@@ -161,10 +169,8 @@ class MainWindow(QMainWindow):
         self.system_tray = SystemTray("Stickfigure Webcam")
 
         # Set callbacks
-        self.system_tray.set_on_show(self._on_tray_show_hide)
         self.system_tray.set_on_toggle_camera(self._on_tray_toggle_camera)
-        self.system_tray.set_on_toggle_debug(self._on_tray_toggle_debug)
-        self.system_tray.set_on_settings(self._on_tray_settings)
+        self.system_tray.set_on_show_settings(self._on_tray_show_settings)
         self.system_tray.set_on_quit(self._on_tray_quit)
 
         # Start tray
@@ -175,6 +181,10 @@ class MainWindow(QMainWindow):
 
     def _start_camera(self):
         """Start the camera thread."""
+        if self.camera_thread is not None:
+            # Camera already running
+            return
+
         self.camera_thread = CameraThread(self.live_config)
         self.camera_thread.frame_ready.connect(self._on_frame_ready)
         self.camera_thread.error_occurred.connect(self._on_error)
@@ -183,7 +193,30 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText("Status: Running")
         self.status_label.setStyleSheet("color: #00ff00; font-weight: bold;")
+        self.camera_button.setText("Stop Camera")
+
+        if self.system_tray:
+            self.system_tray.set_camera_state(True)
+
         print("[MainWindow] Camera thread started")
+
+    def _stop_camera(self):
+        """Stop the camera thread."""
+        if self.camera_thread is None:
+            return
+
+        print("[MainWindow] Stopping camera thread...")
+        self.camera_thread.stop()
+        self.camera_thread = None
+
+        self.status_label.setText("Status: Camera Stopped")
+        self.status_label.setStyleSheet("color: #ff9900;")
+        self.camera_button.setText("Start Camera")
+
+        if self.system_tray:
+            self.system_tray.set_camera_state(False)
+
+        print("[MainWindow] Camera thread stopped")
 
     @pyqtSlot(np.ndarray, object, object, bool, bool)
     def _on_frame_ready(self, frame, pose_results, face_results, mouth_open, eyes_closed):
@@ -200,7 +233,7 @@ class MainWindow(QMainWindow):
         # Render stickfigure
         self._render_stickfigure()
 
-        # Update debug window if open
+        # Update debug window if open and visible
         if self.debug_window and self.debug_window.isVisible():
             self.debug_window.update_frame_data(self.current_frame_data)
 
@@ -280,7 +313,7 @@ class MainWindow(QMainWindow):
         """Handle FPS update."""
         self.fps_label.setText(f"FPS: {fps:.1f}")
 
-        # Update debug window if open
+        # Update debug window if open and visible
         if self.debug_window and self.debug_window.isVisible():
             self.debug_window.update_fps(fps)
 
@@ -298,6 +331,13 @@ class MainWindow(QMainWindow):
         if self.vcam:
             self.vcam.set_mirror(mirror)
 
+    def _on_camera_button_clicked(self):
+        """Handle camera start/stop button click."""
+        if self.camera_thread and self.camera_thread.running:
+            self._stop_camera()
+        else:
+            self._start_camera()
+
     def _on_debug_window_toggled(self, state):
         """Handle debug window checkbox toggle."""
         if state == Qt.CheckState.Checked.value:
@@ -310,60 +350,43 @@ class MainWindow(QMainWindow):
         if not self.debug_window:
             self.debug_window = DebugWindow(self)
             self.debug_window.set_live_config(self.live_config)
+            # Connect window closed signal
+            self.debug_window.window_closed.connect(self._on_debug_window_closed)
 
         self.debug_window.show()
-        self.system_tray.set_debug_visible(True)
+        self.debug_window.activateWindow()
         print("[MainWindow] Debug window shown")
 
     def _hide_debug_window(self):
         """Hide the debug window."""
         if self.debug_window:
             self.debug_window.hide()
-
-        self.system_tray.set_debug_visible(False)
-        self.debug_window_checkbox.setChecked(False)
         print("[MainWindow] Debug window hidden")
 
-    # System tray callbacks
-    def _on_tray_show_hide(self):
-        """Handle show/hide from tray."""
-        if self.isVisible():
-            self.hide()
-        else:
-            self.show()
-            self.activateWindow()
+    def _on_debug_window_closed(self):
+        """Handle debug window being closed by user (X button)."""
+        print("[MainWindow] Debug window closed by user")
+        # Update checkbox state
+        self.debug_window_checkbox.setChecked(False)
 
+    # System tray callbacks
     def _on_tray_toggle_camera(self):
         """Handle toggle camera from tray."""
         if self.camera_thread and self.camera_thread.running:
-            # Stop camera
-            self.camera_thread.stop()
-            self.system_tray.set_camera_state(False)
-            self.status_label.setText("Status: Camera Stopped")
-            self.status_label.setStyleSheet("color: #ff9900;")
+            self._stop_camera()
             self.system_tray.show_notification(
                 "Camera Stopped",
                 "Camera has been stopped"
             )
         else:
-            # Restart camera
             self._start_camera()
-            self.system_tray.set_camera_state(True)
             self.system_tray.show_notification(
                 "Camera Started",
                 "Camera has been started"
             )
 
-    def _on_tray_toggle_debug(self):
-        """Handle toggle debug window from tray."""
-        if self.debug_window and self.debug_window.isVisible():
-            self._hide_debug_window()
-        else:
-            self._show_debug_window()
-            self.debug_window_checkbox.setChecked(True)
-
-    def _on_tray_settings(self):
-        """Handle settings from tray."""
+    def _on_tray_show_settings(self):
+        """Handle show settings from tray."""
         self.show()
         self.activateWindow()
 
@@ -374,18 +397,6 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent):
         """Handle window close event."""
-        # Check if minimize to tray is enabled
-        if self.system_tray and self.system_tray.minimize_to_tray_enabled and not self.is_quitting:
-            print("[MainWindow] Minimizing to tray...")
-            self.hide()
-            self.system_tray.show_notification(
-                "Minimized to Tray",
-                "Application is still running in the system tray"
-            )
-            event.ignore()
-            return
-
-        # Actually quitting
         print("[MainWindow] Closing application...")
 
         # Flush configuration to disk immediately
@@ -394,10 +405,11 @@ class MainWindow(QMainWindow):
         # Close debug window
         if self.debug_window:
             self.debug_window.close()
+            self.debug_window = None
 
         # Stop camera thread
         if self.camera_thread:
-            self.camera_thread.stop()
+            self._stop_camera()
 
         # Stop virtual camera
         if self.vcam and self.vcam.is_active:

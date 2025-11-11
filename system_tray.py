@@ -17,8 +17,7 @@ class SystemTray:
     """
     System tray manager for the application.
 
-    Provides tray icon with context menu for controlling the application
-    and showing/hiding windows.
+    Provides tray icon with simple context menu for controlling the application.
     """
 
     def __init__(self, app_name: str = "Stickfigure Webcam"):
@@ -34,17 +33,12 @@ class SystemTray:
         self.tray_thread: Optional[threading.Thread] = None
 
         # Callbacks
-        self.on_show_callback: Optional[Callable] = None
-        self.on_hide_callback: Optional[Callable] = None
-        self.on_settings_callback: Optional[Callable] = None
         self.on_toggle_camera_callback: Optional[Callable] = None
-        self.on_toggle_debug_callback: Optional[Callable] = None
+        self.on_show_settings_callback: Optional[Callable] = None
         self.on_quit_callback: Optional[Callable] = None
 
         # State tracking
         self.camera_running = False
-        self.debug_visible = False
-        self.minimize_to_tray_enabled = False
 
         print("[SystemTray] Initialized")
 
@@ -95,30 +89,18 @@ class SystemTray:
         Returns:
             pystray.Menu: Context menu with all options.
         """
+        # Get camera text and make it bold if running
+        camera_text = "Stop Camera" if self.camera_running else "Start Camera"
+
         return pystray.Menu(
             Item(
-                "Show/Hide",
-                self._on_show_hide,
-                default=True
+                camera_text,
+                self._on_toggle_camera,
+                default=True  # Bold and double-click action
             ),
             Item(
-                "Start Camera" if not self.camera_running else "Stop Camera",
-                self._on_toggle_camera
-            ),
-            Item(
-                "Show Debug Window",
-                self._on_toggle_debug,
-                checked=lambda item: self.debug_visible
-            ),
-            pystray.Menu.SEPARATOR,
-            Item(
-                "Settings",
-                self._on_settings
-            ),
-            Item(
-                "Minimize to Tray on Close",
-                self._on_toggle_minimize_to_tray,
-                checked=lambda item: self.minimize_to_tray_enabled
+                "Show Settings",
+                self._on_show_settings
             ),
             pystray.Menu.SEPARATOR,
             Item(
@@ -199,83 +181,29 @@ class SystemTray:
         self.camera_running = running
         self.update_menu()
 
-    def set_debug_visible(self, visible: bool):
-        """
-        Update debug window visibility state.
-
-        Args:
-            visible: Whether debug window is visible.
-        """
-        self.debug_visible = visible
-        self.update_menu()
-
-    def set_minimize_to_tray(self, enabled: bool):
-        """
-        Update minimize to tray setting.
-
-        Args:
-            enabled: Whether minimize to tray is enabled.
-        """
-        self.minimize_to_tray_enabled = enabled
-        self.update_menu()
-
     # Callback setters
-    def set_on_show(self, callback: Callable):
-        """Set callback for showing main window."""
-        self.on_show_callback = callback
-
-    def set_on_hide(self, callback: Callable):
-        """Set callback for hiding main window."""
-        self.on_hide_callback = callback
-
-    def set_on_settings(self, callback: Callable):
-        """Set callback for opening settings."""
-        self.on_settings_callback = callback
-
     def set_on_toggle_camera(self, callback: Callable):
         """Set callback for toggling camera."""
         self.on_toggle_camera_callback = callback
 
-    def set_on_toggle_debug(self, callback: Callable):
-        """Set callback for toggling debug window."""
-        self.on_toggle_debug_callback = callback
+    def set_on_show_settings(self, callback: Callable):
+        """Set callback for showing settings."""
+        self.on_show_settings_callback = callback
 
     def set_on_quit(self, callback: Callable):
         """Set callback for quitting application."""
         self.on_quit_callback = callback
 
     # Internal menu action handlers
-    def _on_show_hide(self, icon, item):
-        """Handle show/hide menu item."""
-        if self.on_show_callback:
-            self.on_show_callback()
-
     def _on_toggle_camera(self, icon, item):
         """Handle toggle camera menu item."""
         if self.on_toggle_camera_callback:
             self.on_toggle_camera_callback()
 
-    def _on_toggle_debug(self, icon, item):
-        """Handle toggle debug window menu item."""
-        if self.on_toggle_debug_callback:
-            self.on_toggle_debug_callback()
-
-    def _on_settings(self, icon, item):
-        """Handle settings menu item."""
-        if self.on_settings_callback:
-            self.on_settings_callback()
-
-    def _on_toggle_minimize_to_tray(self, icon, item):
-        """Handle toggle minimize to tray menu item."""
-        self.minimize_to_tray_enabled = not self.minimize_to_tray_enabled
-        self.update_menu()
-
-        message = "enabled" if self.minimize_to_tray_enabled else "disabled"
-        print(f"[SystemTray] Minimize to tray {message}")
-        self.show_notification(
-            "Settings Changed",
-            f"Minimize to tray {message}"
-        )
+    def _on_show_settings(self, icon, item):
+        """Handle show settings menu item."""
+        if self.on_show_settings_callback:
+            self.on_show_settings_callback()
 
     def _on_quit(self, icon, item):
         """Handle quit menu item."""
@@ -292,7 +220,8 @@ def test_system_tray():
     tray = SystemTray("Test App")
 
     # Set up callbacks
-    tray.set_on_show(lambda: print("Show callback"))
+    tray.set_on_toggle_camera(lambda: print("Toggle camera callback"))
+    tray.set_on_show_settings(lambda: print("Show settings callback"))
     tray.set_on_quit(lambda: tray.stop())
 
     # Start tray

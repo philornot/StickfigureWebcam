@@ -6,17 +6,16 @@ with detection overlays and debug information.
 """
 
 import cv2
-import numpy as np
-from PyQt6.QtCore import Qt, pyqtSlot, QTimer
-from PyQt6.QtGui import QImage, QPixmap, QFont
+from PyQt6.QtCore import Qt, pyqtSlot, QTimer, pyqtSignal
+from PyQt6.QtGui import QImage, QPixmap, QFont, QCloseEvent
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLabel,
     QSizePolicy
 )
 
 import config
-from stickfigure import draw_stickfigure
 from face_detection import draw_face_landmarks
+from stickfigure import draw_stickfigure
 
 
 class DebugWidget(QLabel):
@@ -38,18 +37,17 @@ class DebugWindow(QMainWindow):
     face landmarks, and real-time debug information overlaid.
     """
 
+    # Signal emitted when window is closed
+    window_closed = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_frame_data = None
         self.current_fps = 0.0
         self.live_config = None
+        self.render_timer = None
 
         self._init_ui()
-
-        # Update timer for rendering (30 FPS)
-        self.render_timer = QTimer()
-        self.render_timer.timeout.connect(self._render_debug)
-        self.render_timer.start(33)  # ~30 FPS
 
         print("[DebugWindow] Initialized")
 
@@ -91,6 +89,22 @@ class DebugWindow(QMainWindow):
         """
         self.live_config = live_config
 
+    def start_rendering(self):
+        """Start the rendering timer."""
+        if self.render_timer is None:
+            # Create and start update timer for rendering (30 FPS)
+            self.render_timer = QTimer(self)
+            self.render_timer.timeout.connect(self._render_debug)
+            self.render_timer.start(33)  # ~30 FPS
+            print("[DebugWindow] Rendering started")
+
+    def stop_rendering(self):
+        """Stop the rendering timer."""
+        if self.render_timer is not None:
+            self.render_timer.stop()
+            self.render_timer = None
+            print("[DebugWindow] Rendering stopped")
+
     @pyqtSlot(object)
     def update_frame_data(self, frame_data):
         """
@@ -110,6 +124,18 @@ class DebugWindow(QMainWindow):
             fps: Current frames per second.
         """
         self.current_fps = fps
+
+    def showEvent(self, event):
+        """Handle window show event."""
+        super().showEvent(event)
+        self.start_rendering()
+        print("[DebugWindow] Window shown")
+
+    def hideEvent(self, event):
+        """Handle window hide event."""
+        super().hideEvent(event)
+        self.stop_rendering()
+        print("[DebugWindow] Window hidden")
 
     def _render_debug(self):
         """Render the debug view with current frame data."""
@@ -257,9 +283,12 @@ class DebugWindow(QMainWindow):
             1
         )
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent):
         """Handle window close event."""
-        print("[DebugWindow] Window closed")
-        # Stop render timer
-        self.render_timer.stop()
+        print("[DebugWindow] Window closed by user")
+        self.stop_rendering()
+
+        # Emit signal to notify parent
+        self.window_closed.emit()
+
         event.accept()
