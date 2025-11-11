@@ -35,21 +35,13 @@ class DetectionWorker:
         """
         self.cap = camera_capture
 
-        # Initialize MediaPipe models
+        # Initialize MediaPipe solutions (but not models yet)
         self.mp_pose = mp.solutions.pose
         self.mp_face_mesh = mp.solutions.face_mesh
 
-        self.pose = self.mp_pose.Pose(
-            min_detection_confidence=config.POSE_MIN_DETECTION_CONFIDENCE,
-            min_tracking_confidence=config.POSE_MIN_TRACKING_CONFIDENCE,
-            model_complexity=config.POSE_MODEL_COMPLEXITY
-        )
-
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=config.FACE_MESH_MAX_FACES,
-            min_detection_confidence=config.FACE_MESH_MIN_DETECTION_CONFIDENCE,
-            min_tracking_confidence=config.FACE_MESH_MIN_TRACKING_CONFIDENCE
-        )
+        # Models will be initialized lazily in the detection thread
+        self.pose = None
+        self.face_mesh = None
 
         # Threading components
         self.frame_queue = queue.Queue(maxsize=2)
@@ -164,11 +156,22 @@ class DetectionWorker:
         """
         print("[DetectionThread] Started")
 
+        # Lazy initialization: Initialize MediaPipe models only when needed
+        # This speeds up startup time significantly
+        models_initialized = False
+
         while self.running.is_set():
             try:
                 frame = self.frame_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
+
+            # Initialize MediaPipe models on first frame
+            if not models_initialized:
+                print("[DetectionThread] Initializing MediaPipe models...")
+                self._initialize_mediapipe_models()
+                models_initialized = True
+                print("[DetectionThread] MediaPipe models ready")
 
             # Process on smaller frame for performance
             processing_frame = cv2.resize(
@@ -202,6 +205,25 @@ class DetectionWorker:
                 pass  # Skip result if queue is full
 
         print("[DetectionThread] Stopped")
+
+    def _initialize_mediapipe_models(self):
+        """
+        Initialize MediaPipe models.
+
+        This method is called lazily when the first frame arrives,
+        avoiding blocking camera initialization at startup.
+        """
+        self.pose = self.mp_pose.Pose(
+            min_detection_confidence=config.POSE_MIN_DETECTION_CONFIDENCE,
+            min_tracking_confidence=config.POSE_MIN_TRACKING_CONFIDENCE,
+            model_complexity=config.POSE_MODEL_COMPLEXITY
+        )
+
+        self.face_mesh = self.mp_face_mesh.FaceMesh(
+            max_num_faces=config.FACE_MESH_MAX_FACES,
+            min_detection_confidence=config.FACE_MESH_MIN_DETECTION_CONFIDENCE,
+            min_tracking_confidence=config.FACE_MESH_MIN_TRACKING_CONFIDENCE
+        )
 
     def _process_face_landmarks(self, face_results):
         """

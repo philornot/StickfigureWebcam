@@ -8,7 +8,7 @@ and debug window.
 
 import cv2
 import numpy as np
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QFont, QCloseEvent
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -46,6 +46,9 @@ class MainWindow(QMainWindow):
     for the stickfigure webcam application.
     """
 
+    # Signal to safely close the application from another thread
+    safe_close_signal = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.live_config = LiveConfig()
@@ -55,11 +58,15 @@ class MainWindow(QMainWindow):
         self.debug_window = None
         self.system_tray = None
         self.is_quitting = False
+        self.minimize_to_tray = True  # Default: minimize to tray on close
 
         self._init_ui()
         self._init_virtual_camera()
         self._init_system_tray()
         self._start_camera()
+
+        # Connect the safe close signal to the close slot
+        self.safe_close_signal.connect(self.close)
 
     def _init_ui(self):
         """Initialize the main UI."""
@@ -124,6 +131,21 @@ class MainWindow(QMainWindow):
 
         controls_layout.addStretch()
         left_layout.addLayout(controls_layout)
+
+        # System tray controls
+        tray_layout = QHBoxLayout()
+
+        # Minimize to tray checkbox
+        self.minimize_to_tray_checkbox = QCheckBox("Minimize to system tray on close")
+        self.minimize_to_tray_checkbox.setChecked(self.minimize_to_tray)
+        self.minimize_to_tray_checkbox.setToolTip(
+            "When enabled, closing the window minimizes the app to system tray.\n"
+            "When disabled, closing the window exits the application."
+        )
+        self.minimize_to_tray_checkbox.stateChanged.connect(self._on_minimize_to_tray_changed)
+        tray_layout.addWidget(self.minimize_to_tray_checkbox)
+        tray_layout.addStretch()
+        left_layout.addLayout(tray_layout)
 
         main_layout.addLayout(left_layout, 2)
 
@@ -331,6 +353,11 @@ class MainWindow(QMainWindow):
         if self.vcam:
             self.vcam.set_mirror(mirror)
 
+    def _on_minimize_to_tray_changed(self, state):
+        """Handle minimize to tray checkbox change."""
+        self.minimize_to_tray = (state == Qt.CheckState.Checked.value)
+        print(f"[MainWindow] Minimize to tray: {'enabled' if self.minimize_to_tray else 'disabled'}")
+
     def _on_camera_button_clicked(self):
         """Handle camera start/stop button click."""
         if self.camera_thread and self.camera_thread.running:
@@ -393,10 +420,24 @@ class MainWindow(QMainWindow):
     def _on_tray_quit(self):
         """Handle quit from tray."""
         self.is_quitting = True
-        self.close()
+        # Emit a signal to close the window safely from the main GUI thread
+        self.safe_close_signal.emit()
 
     def closeEvent(self, event: QCloseEvent):
         """Handle window close event."""
+        # If minimize to tray is enabled and not explicitly quitting
+        if self.minimize_to_tray and not self.is_quitting:
+            print("[MainWindow] Minimizing to system tray...")
+            self.hide()
+            if self.system_tray:
+                self.system_tray.show_notification(
+                    "Stickfigure Webcam",
+                    "Application minimized to system tray"
+                )
+            event.ignore()
+            return
+
+        # Actually quitting
         print("[MainWindow] Closing application...")
 
         # Flush configuration to disk immediately
@@ -421,3 +462,8 @@ class MainWindow(QMainWindow):
 
         print("[MainWindow] Cleanup complete")
         event.accept()
+
+        # Force application to quit
+        from PyQt6.QtWidgets import QApplication
+        QApplication.instance().quit()
+

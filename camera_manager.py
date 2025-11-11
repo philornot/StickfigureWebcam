@@ -90,7 +90,7 @@ class CameraManager:
         Returns:
             tuple: (width, height) in pixels.
         """
-        return (self.width, self.height)
+        return self.width, self.height
 
     def is_opened(self):
         """

@@ -42,7 +42,8 @@ class SystemTray:
 
         print("[SystemTray] Initialized")
 
-    def create_icon_image(self) -> Image.Image:
+    @staticmethod
+    def create_icon_image() -> Image.Image:
         """
         Create the tray icon image.
 
@@ -195,17 +196,17 @@ class SystemTray:
         self.on_quit_callback = callback
 
     # Internal menu action handlers
-    def _on_toggle_camera(self, icon, item):
+    def _on_toggle_camera(self):
         """Handle toggle camera menu item."""
         if self.on_toggle_camera_callback:
             self.on_toggle_camera_callback()
 
-    def _on_show_settings(self, icon, item):
+    def _on_show_settings(self):
         """Handle show settings menu item."""
         if self.on_show_settings_callback:
             self.on_show_settings_callback()
 
-    def _on_quit(self, icon, item):
+    def _on_quit(self):
         """Handle quit menu item."""
         if self.on_quit_callback:
             self.on_quit_callback()

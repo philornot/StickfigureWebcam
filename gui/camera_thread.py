@@ -49,7 +49,8 @@ class CameraThread(QThread):
         """Main camera processing loop."""
         try:
             self._initialize_camera()
-            self._initialize_mediapipe()
+            # Note: MediaPipe models are NOT initialized here - they will be
+            # initialized lazily when the first frame is captured
 
             self.running = True
             print("[CameraThread] Started successfully")
@@ -60,6 +61,12 @@ class CameraThread(QThread):
                     print("[CameraThread] Failed to read frame")
                     time.sleep(0.01)
                     continue
+
+                # Lazy initialization: Initialize MediaPipe on first frame
+                if self.pose is None or self.face_mesh is None:
+                    print("[CameraThread] Initializing MediaPipe models...")
+                    self._initialize_mediapipe()
+                    print("[CameraThread] MediaPipe models ready")
 
                 # Mirror frame
                 frame = cv2.flip(frame, 1)
@@ -87,7 +94,12 @@ class CameraThread(QThread):
         print(f"[CameraThread] Camera initialized: {config.CAMERA_WIDTH}x{config.CAMERA_HEIGHT}")
 
     def _initialize_mediapipe(self):
-        """Initialize MediaPipe models with current config."""
+        """
+        Initialize MediaPipe models with current config.
+
+        This is called lazily when the first frame is captured to avoid
+        blocking the camera initialization and speed up startup.
+        """
         mp_pose = mp.solutions.pose
         mp_face_mesh = mp.solutions.face_mesh
 
@@ -104,10 +116,13 @@ class CameraThread(QThread):
             min_detection_confidence=config.FACE_MESH_MIN_DETECTION_CONFIDENCE,
             min_tracking_confidence=config.FACE_MESH_MIN_TRACKING_CONFIDENCE
         )
-        print("[CameraThread] MediaPipe initialized")
 
     def _process_frame(self, frame):
         """Process single frame through detection pipeline."""
+        # Skip processing if models aren't ready yet
+        if self.pose is None or self.face_mesh is None:
+            return
+
         # Resize for faster processing
         processing_frame = cv2.resize(
             frame,
