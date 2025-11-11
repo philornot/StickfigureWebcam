@@ -1,15 +1,9 @@
-# Install with: pip install -r requirements.txt
-
-# Core dependencies
-opencv-python>=4.8.0
-mediapipe>=0.10.0
-numpy>=1.24.0
-
-# Virtual camera support
+# pip install -r requirements.txt
+setuptools
+wheel
+opencv-python>=4.8,<5
+mediapipe==0.10.5
+numpy>=1.24,<2
 pyvirtualcam>=0.10.0
-
-# GUI framework
 PyQt6>=6.4.0
-
-# Optional: Enhanced camera support on Windows
-# pywin32>=305  # Uncomment for Windows DirectShow support
+pystray>=0.19.5
