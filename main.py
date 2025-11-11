@@ -6,6 +6,7 @@ all components: camera, detection, drawing, UI, and virtual camera output.
 """
 
 import cv2
+import numpy as np
 
 import config
 from camera_manager import CameraManager
@@ -47,6 +48,7 @@ class StickfigureWebcam:
 
         # UI state
         self.debug_mode = False
+        self.models_ready = False  # Track if MediaPipe models are loaded
 
         # Initialize virtual camera
         self.vcam = VirtualCameraOutput(
@@ -79,6 +81,34 @@ class StickfigureWebcam:
         finally:
             print("[StickfigureWebcam] Main loop exited")
 
+    def _draw_loading_message(self, canvas, width, height):
+        """
+        Draw 'Loading MediaPipe models...' message on canvas.
+
+        Args:
+            canvas: Canvas to draw on
+            width: Canvas width
+            height: Canvas height
+        """
+        text = "Loading MediaPipe models..."
+        font_scale = 0.8
+        thickness = 2
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+        text_x = (width - text_size[0]) // 2
+        text_y = (height + text_size[1]) // 2
+
+        cv2.putText(
+            canvas,
+            text,
+            (text_x, text_y),
+            font,
+            font_scale,
+            config.STICKFIGURE_COLOR,
+            thickness
+        )
+
     def _main_loop(self):
         """
         Main rendering and event loop.
@@ -86,13 +116,47 @@ class StickfigureWebcam:
         Continuously processes detection results, renders views,
         and handles user input until quit is requested.
         """
+        # Create initial window immediately
+        initial_canvas = np.zeros(
+            (self.renderer.height, self.renderer.width, 3),
+            dtype=np.uint8
+        )
+        self._draw_loading_message(
+            initial_canvas,
+            self.renderer.width,
+            self.renderer.height
+        )
+        cv2.imshow(config.WINDOW_NAME_STICKFIGURE, initial_canvas)
+        cv2.waitKey(1)  # Force window to appear
+
         while True:
-            # Get detection results from worker
-            detection_data = self.detection_worker.get_detection_result(timeout=0.1)
+            # Get detection results from worker with short timeout
+            detection_data = self.detection_worker.get_detection_result(timeout=0.033)
 
             if detection_data is None:
-                # No new data, continue waiting
+                # No new data yet - show loading screen or last frame
+                if not self.models_ready:
+                    # Still loading - show loading message
+                    loading_canvas = np.zeros(
+                        (self.renderer.height, self.renderer.width, 3),
+                        dtype=np.uint8
+                    )
+                    self._draw_loading_message(
+                        loading_canvas,
+                        self.renderer.width,
+                        self.renderer.height
+                    )
+                    cv2.imshow(config.WINDOW_NAME_STICKFIGURE, loading_canvas)
+
+                # Check for quit even while loading
+                if not self._handle_input():
+                    break
                 continue
+
+            # Models are now ready
+            if not self.models_ready:
+                self.models_ready = True
+                print("[StickfigureWebcam] MediaPipe models loaded - starting render")
 
             # Update FPS
             self.fps_counter.update()
