@@ -7,10 +7,9 @@ view and debug overlay with detection visualizations.
 
 import numpy as np
 
-import config
+from face_detection import draw_face_landmarks
 from stickfigure import draw_stickfigure
 from ui import draw_no_person_message, create_debug_overlay
-from face_detection import draw_face_landmarks
 
 
 class Renderer:
