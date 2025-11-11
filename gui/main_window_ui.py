@@ -4,7 +4,7 @@ UI management for main window.
 This module handles all UI setup and widget management for the main window.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
@@ -26,19 +26,22 @@ class StickfigureWidget(QLabel):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
 
+class MainWindowSignals(QObject):
+    """QObject container for MainWindowUI signals."""
+
+    config_changed = pyqtSignal(dict)
+    mirror_changed = pyqtSignal(bool)
+    minimize_to_tray_changed = pyqtSignal(bool)
+    camera_button_clicked = pyqtSignal()
+    debug_window_toggled = pyqtSignal(bool)
+
+
 class MainWindowUI:
     """
     UI manager for main window.
 
     Handles all UI setup, widget creation, and UI updates.
     """
-
-    # Signals
-    config_changed = pyqtSignal(dict)
-    mirror_changed = pyqtSignal(bool)
-    minimize_to_tray_changed = pyqtSignal(bool)
-    camera_button_clicked = pyqtSignal()
-    debug_window_toggled = pyqtSignal(bool)
 
     def __init__(self, main_window, live_config):
         """
@@ -50,6 +53,9 @@ class MainWindowUI:
         """
         self.main_window = main_window
         self.live_config = live_config
+
+        # Signals container
+        self.signals = MainWindowSignals()
 
         # Widgets
         self.video_widget = None
@@ -202,25 +208,25 @@ class MainWindowUI:
         """Handle mirror checkbox change."""
         mirror = (state == Qt.CheckState.Checked.value)
         self.live_config.update(vcam_mirror_output=mirror)
-        self.mirror_changed.emit(mirror)
+        self.signals.mirror_changed.emit(mirror)
 
     def _on_minimize_to_tray_changed(self, state):
         """Handle minimize to tray checkbox change."""
         enabled = (state == Qt.CheckState.Checked.value)
-        self.minimize_to_tray_changed.emit(enabled)
+        self.signals.minimize_to_tray_changed.emit(enabled)
 
     def _on_camera_button_clicked(self):
         """Handle camera button click."""
-        self.camera_button_clicked.emit()
+        self.signals.camera_button_clicked.emit()
 
     def _on_debug_window_toggled(self, state):
         """Handle debug window checkbox toggle."""
         show = (state == Qt.CheckState.Checked.value)
-        self.debug_window_toggled.emit(show)
+        self.signals.debug_window_toggled.emit(show)
 
     def _on_config_changed(self, changes):
         """Handle configuration change."""
-        self.config_changed.emit(changes)
+        self.signals.config_changed.emit(changes)
 
     # Public methods for updating UI
     def update_status(self, text, color="#ffff00"):
