@@ -2,26 +2,28 @@
 Main window for GUI application.
 
 This module provides the main application window with video preview,
-status indicators, and control panel integration.
+status indicators, control panel integration, system tray support,
+and debug window.
 """
 
 import cv2
 import numpy as np
 from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QImage, QPixmap, QFont
+from PyQt6.QtGui import QImage, QPixmap, QFont, QCloseEvent
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QCheckBox, QScrollArea, QSizePolicy
 )
 
 import config
+from gui.camera_thread import CameraThread
+from gui.config_manager import LiveConfig
+from gui.control_panel import ControlPanel
+from gui.debug_window import DebugWindow
 from stickfigure import draw_stickfigure
+from system_tray import SystemTray
 from ui import draw_no_person_message
 from virtual_camera import VirtualCameraOutput
-
-from gui.config_manager import LiveConfig
-from gui.camera_thread import CameraThread
-from gui.control_panel import ControlPanel
 
 
 class StickfigureWidget(QLabel):
@@ -40,7 +42,8 @@ class MainWindow(QMainWindow):
     Main application window.
 
     Provides the primary GUI with video preview, control panel,
-    and status indicators for the stickfigure webcam application.
+    status indicators, system tray integration, and debug window
+    for the stickfigure webcam application.
     """
 
     def __init__(self):
@@ -49,9 +52,13 @@ class MainWindow(QMainWindow):
         self.camera_thread = None
         self.vcam = None
         self.current_frame_data = None
+        self.debug_window = None
+        self.system_tray = None
+        self.is_quitting = False
 
         self._init_ui()
         self._init_virtual_camera()
+        self._init_system_tray()
         self._start_camera()
 
     def _init_ui(self):
@@ -102,6 +109,14 @@ class MainWindow(QMainWindow):
         vcam_layout.addWidget(self.vcam_mirror_checkbox)
         left_layout.addLayout(vcam_layout)
 
+        # Debug window controls
+        debug_layout = QHBoxLayout()
+        self.debug_window_checkbox = QCheckBox("Show Debug Window")
+        self.debug_window_checkbox.stateChanged.connect(self._on_debug_window_toggled)
+        debug_layout.addWidget(self.debug_window_checkbox)
+        debug_layout.addStretch()
+        left_layout.addLayout(debug_layout)
+
         main_layout.addLayout(left_layout, 2)
 
         # Right side: Control panel in scroll area
@@ -141,6 +156,23 @@ class MainWindow(QMainWindow):
             self.vcam_status_label.setText("Virtual Camera: Error")
             self.vcam_status_label.setStyleSheet("color: #ff0000;")
 
+    def _init_system_tray(self):
+        """Initialize system tray icon."""
+        self.system_tray = SystemTray("Stickfigure Webcam")
+
+        # Set callbacks
+        self.system_tray.set_on_show(self._on_tray_show_hide)
+        self.system_tray.set_on_toggle_camera(self._on_tray_toggle_camera)
+        self.system_tray.set_on_toggle_debug(self._on_tray_toggle_debug)
+        self.system_tray.set_on_settings(self._on_tray_settings)
+        self.system_tray.set_on_quit(self._on_tray_quit)
+
+        # Start tray
+        self.system_tray.start()
+        self.system_tray.set_camera_state(True)  # Camera starts automatically
+
+        print("[MainWindow] System tray initialized")
+
     def _start_camera(self):
         """Start the camera thread."""
         self.camera_thread = CameraThread(self.live_config)
@@ -167,6 +199,10 @@ class MainWindow(QMainWindow):
 
         # Render stickfigure
         self._render_stickfigure()
+
+        # Update debug window if open
+        if self.debug_window and self.debug_window.isVisible():
+            self.debug_window.update_frame_data(self.current_frame_data)
 
     def _render_stickfigure(self):
         """Render stickfigure with current configuration."""
@@ -244,6 +280,10 @@ class MainWindow(QMainWindow):
         """Handle FPS update."""
         self.fps_label.setText(f"FPS: {fps:.1f}")
 
+        # Update debug window if open
+        if self.debug_window and self.debug_window.isVisible():
+            self.debug_window.update_fps(fps)
+
     @pyqtSlot(dict)
     def _on_config_changed(self, changes):
         """Handle configuration change."""
@@ -258,12 +298,102 @@ class MainWindow(QMainWindow):
         if self.vcam:
             self.vcam.set_mirror(mirror)
 
-    def closeEvent(self, event):
+    def _on_debug_window_toggled(self, state):
+        """Handle debug window checkbox toggle."""
+        if state == Qt.CheckState.Checked.value:
+            self._show_debug_window()
+        else:
+            self._hide_debug_window()
+
+    def _show_debug_window(self):
+        """Show the debug window."""
+        if not self.debug_window:
+            self.debug_window = DebugWindow(self)
+            self.debug_window.set_live_config(self.live_config)
+
+        self.debug_window.show()
+        self.system_tray.set_debug_visible(True)
+        print("[MainWindow] Debug window shown")
+
+    def _hide_debug_window(self):
+        """Hide the debug window."""
+        if self.debug_window:
+            self.debug_window.hide()
+
+        self.system_tray.set_debug_visible(False)
+        self.debug_window_checkbox.setChecked(False)
+        print("[MainWindow] Debug window hidden")
+
+    # System tray callbacks
+    def _on_tray_show_hide(self):
+        """Handle show/hide from tray."""
+        if self.isVisible():
+            self.hide()
+        else:
+            self.show()
+            self.activateWindow()
+
+    def _on_tray_toggle_camera(self):
+        """Handle toggle camera from tray."""
+        if self.camera_thread and self.camera_thread.running:
+            # Stop camera
+            self.camera_thread.stop()
+            self.system_tray.set_camera_state(False)
+            self.status_label.setText("Status: Camera Stopped")
+            self.status_label.setStyleSheet("color: #ff9900;")
+            self.system_tray.show_notification(
+                "Camera Stopped",
+                "Camera has been stopped"
+            )
+        else:
+            # Restart camera
+            self._start_camera()
+            self.system_tray.set_camera_state(True)
+            self.system_tray.show_notification(
+                "Camera Started",
+                "Camera has been started"
+            )
+
+    def _on_tray_toggle_debug(self):
+        """Handle toggle debug window from tray."""
+        if self.debug_window and self.debug_window.isVisible():
+            self._hide_debug_window()
+        else:
+            self._show_debug_window()
+            self.debug_window_checkbox.setChecked(True)
+
+    def _on_tray_settings(self):
+        """Handle settings from tray."""
+        self.show()
+        self.activateWindow()
+
+    def _on_tray_quit(self):
+        """Handle quit from tray."""
+        self.is_quitting = True
+        self.close()
+
+    def closeEvent(self, event: QCloseEvent):
         """Handle window close event."""
+        # Check if minimize to tray is enabled
+        if self.system_tray and self.system_tray.minimize_to_tray_enabled and not self.is_quitting:
+            print("[MainWindow] Minimizing to tray...")
+            self.hide()
+            self.system_tray.show_notification(
+                "Minimized to Tray",
+                "Application is still running in the system tray"
+            )
+            event.ignore()
+            return
+
+        # Actually quitting
         print("[MainWindow] Closing application...")
 
         # Flush configuration to disk immediately
         self.live_config.flush_to_disk()
+
+        # Close debug window
+        if self.debug_window:
+            self.debug_window.close()
 
         # Stop camera thread
         if self.camera_thread:
@@ -272,6 +402,10 @@ class MainWindow(QMainWindow):
         # Stop virtual camera
         if self.vcam and self.vcam.is_active:
             self.vcam.stop()
+
+        # Stop system tray
+        if self.system_tray:
+            self.system_tray.stop()
 
         print("[MainWindow] Cleanup complete")
         event.accept()
