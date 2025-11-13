@@ -6,9 +6,10 @@ theme configuration and the entry point for GUI mode.
 """
 
 import sys
+
 from PyQt6.QtWidgets import QApplication
 
-from gui.main_window import MainWindow
+from gui.launcher_window import LauncherWindow
 
 
 def create_app():
@@ -151,7 +152,7 @@ def run_gui():
 
     try:
         app = create_app()
-        window = MainWindow()
+        window = LauncherWindow()
         window.show()
         return app.exec()
     except Exception as e:
